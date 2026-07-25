@@ -1,9 +1,64 @@
 /**
  * Core health/discovery/launch logic.
  */
-import { getClient, getTargetInfo, evaluate } from '../connection.js';
+import { getClient, getTargetInfo, evaluate, DEFAULT_CDP_PORT } from '../connection.js';
 import { existsSync } from 'fs';
 import { execSync, spawn } from 'child_process';
+import http from 'http';
+
+/**
+ * Probe a CDP port. Returns whether something answers and if it looks like TradingView.
+ * @param {number} port
+ * @returns {Promise<{ ok: boolean, isTradingView: boolean, occupied: boolean, info?: object, statusCode?: number }>}
+ */
+export function probeCdp(port) {
+  return new Promise((resolve) => {
+    const req = http.get(`http://127.0.0.1:${port}/json/version`, { timeout: 1500 }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        const occupied = true;
+        if (res.statusCode !== 200) {
+          resolve({ ok: false, isTradingView: false, occupied, statusCode: res.statusCode });
+          return;
+        }
+        try {
+          const info = JSON.parse(data);
+          const ua = `${info['User-Agent'] || ''} ${info.Browser || ''}`;
+          resolve({
+            ok: true,
+            isTradingView: /TradingView/i.test(ua),
+            occupied,
+            info,
+            statusCode: res.statusCode,
+          });
+        } catch {
+          resolve({ ok: false, isTradingView: false, occupied, statusCode: res.statusCode });
+        }
+      });
+    });
+    req.on('error', () => resolve({ ok: false, isTradingView: false, occupied: false }));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve({ ok: false, isTradingView: false, occupied: false });
+    });
+  });
+}
+
+async function findHealthyTradingViewPorts(preferredPort) {
+  // Only probe the requested / configured port — never scan unrelated ports (e.g. Brave on 9222).
+  const ports = [...new Set([
+    preferredPort,
+    Number(process.env.TV_CDP_PORT) || null,
+  ].filter((p) => Number.isFinite(p) && p > 0))];
+
+  const found = [];
+  for (const p of ports) {
+    const probe = await probeCdp(p);
+    if (probe.ok && probe.isTradingView) found.push({ port: p, probe });
+  }
+  return found;
+}
 
 export async function healthCheck() {
   await getClient();
@@ -159,10 +214,51 @@ export async function uiState() {
   return { success: true, ...state };
 }
 
-export async function launch({ port, kill_existing } = {}) {
-  const cdpPort = port || 9222;
+export async function launch({ port, kill_existing, force_restart } = {}) {
+  const cdpPort = port || Number(process.env.TV_CDP_PORT || DEFAULT_CDP_PORT);
   const killFirst = kill_existing !== false;
+  const forceRestart = force_restart === true;
   const platform = process.platform;
+
+  // Reuse a healthy TradingView CDP session — never spawn a second instance
+  // (second Electron instances often open blank / break the first window).
+  const existing = await probeCdp(cdpPort);
+  if (existing.ok && existing.isTradingView && !forceRestart) {
+    return {
+      success: true,
+      already_running: true,
+      reused: true,
+      platform,
+      cdp_port: cdpPort,
+      cdp_url: `http://localhost:${cdpPort}`,
+      cdp_ready: true,
+      browser: existing.info?.Browser || null,
+      user_agent: existing.info?.['User-Agent'] || null,
+      message:
+        'TradingView already running with CDP on this port — reused existing instance (pass force_restart to kill and relaunch).',
+    };
+  }
+
+  if (existing.occupied && !existing.isTradingView && !forceRestart) {
+    throw new Error(
+      `Port ${cdpPort} is already in use by a non-TradingView CDP endpoint` +
+        ` (HTTP ${existing.statusCode || '?'}; ${existing.info?.Browser || existing.info?.['User-Agent'] || 'unknown'}).` +
+        ` Use a different port (e.g. 9223) or stop that process first.`,
+    );
+  }
+
+  // TV healthy on another port? Do not pkill + spawn — that blanks the live session.
+  if (!forceRestart) {
+    const healthy = await findHealthyTradingViewPorts(cdpPort);
+    const other = healthy.find((h) => h.port !== cdpPort);
+    if (other) {
+      throw new Error(
+        `TradingView is already running with CDP on port ${other.port}.` +
+          ` Reuse it (TV_CDP_PORT=${other.port} or port=${other.port}) instead of launching another instance.` +
+          ` Pass force_restart only if you intentionally want to kill it.`,
+      );
+    }
+  }
 
   const pathMap = {
     darwin: [
@@ -211,7 +307,9 @@ export async function launch({ port, kill_existing } = {}) {
     throw new Error(`TradingView not found on ${platform}. Searched: ${candidates.join(', ')}. Launch manually with: /path/to/TradingView --remote-debugging-port=${cdpPort}`);
   }
 
-  if (killFirst) {
+  // Only kill when we actually need to start (or force restart). Default kill
+  // clears a TV process that has no CDP / is on the wrong port.
+  if (killFirst || forceRestart) {
     try {
       if (platform === 'win32') execSync('taskkill /F /IM TradingView.exe', { timeout: 5000 });
       else execSync('pkill -f TradingView', { timeout: 5000 });
@@ -224,24 +322,15 @@ export async function launch({ port, kill_existing } = {}) {
 
   for (let i = 0; i < 15; i++) {
     await new Promise(r => setTimeout(r, 1000));
-    try {
-      const http = await import('http');
-      const ready = await new Promise((resolve) => {
-        http.get(`http://localhost:${cdpPort}/json/version`, (res) => {
-          let data = '';
-          res.on('data', (chunk) => data += chunk);
-          res.on('end', () => resolve(data));
-        }).on('error', () => resolve(null));
-      });
-      if (ready) {
-        const info = JSON.parse(ready);
-        return {
-          success: true, platform, binary: tvPath, pid: child.pid,
-          cdp_port: cdpPort, cdp_url: `http://localhost:${cdpPort}`,
-          browser: info.Browser, user_agent: info['User-Agent'],
-        };
-      }
-    } catch { /* retry */ }
+    const ready = await probeCdp(cdpPort);
+    if (ready.ok && ready.isTradingView) {
+      return {
+        success: true, platform, binary: tvPath, pid: child.pid,
+        cdp_port: cdpPort, cdp_url: `http://localhost:${cdpPort}`,
+        cdp_ready: true,
+        browser: ready.info?.Browser, user_agent: ready.info?.['User-Agent'],
+      };
+    }
   }
 
   return {

@@ -7,13 +7,15 @@ register('status', {
 });
 
 register('launch', {
-  description: 'Launch TradingView with CDP enabled',
+  description: 'Launch TradingView with CDP, or reuse if already running on the port',
   options: {
-    port: { type: 'string', short: 'p', description: 'CDP port (default 9222)' },
-    'no-kill': { type: 'boolean', description: 'Do not kill existing instances' },
+    port: { type: 'string', short: 'p', description: 'CDP port (default TV_CDP_PORT or 9223)' },
+    'no-kill': { type: 'boolean', description: 'Do not kill existing instances when starting fresh' },
+    'force-restart': { type: 'boolean', description: 'Kill and relaunch even if CDP is already healthy' },
   },
   handler: (opts) => core.launch({
     port: opts.port ? Number(opts.port) : undefined,
     kill_existing: !opts['no-kill'],
+    force_restart: !!opts['force-restart'],
   }),
 });

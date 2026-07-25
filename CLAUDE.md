@@ -1,6 +1,17 @@
 # TradingView MCP — Claude Instructions
 
-68 tools for reading and controlling a live TradingView Desktop chart via CDP (port 9222).
+68 tools for reading and controlling a live TradingView Desktop chart via CDP (port **9223** by default — avoids Brave on 9222). Override with `TV_CDP_PORT` if needed.
+
+## Session start (always first)
+
+Before morning brief, multi-symbol scans, or any work that depends on `rules.json` watchlist:
+
+1. Prefer an already-running TradingView CDP session. Check with `tv_health_check` / `tv status` (default port **9223**; set `TV_CDP_PORT` only if different). Do **not** pass port 9222 unless you intentionally use that port.
+2. Only call `tv_launch` / `tv` if health check fails. Launch **reuses** a healthy TV CDP on that port and will **not** spawn a second instance (second instances often show a blank window). Use `force_restart` only when you intentionally need a hard relaunch.
+3. Run: `tv watchlist sync` (from this repo: `npm run tv -- watchlist sync`).
+4. Confirm success JSON shows a non-zero `count`. If it fails or count is 0, fix the TV watchlist panel (open it, add symbols) and re-run — do not invent a watchlist.
+
+This replaces `rules.json` `watchlist` from the live TV list and refuses to overwrite when TV returns empty.
 
 ## Decision Tree — Which Tool When
 
@@ -32,6 +43,7 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 5. `data_get_pine_tables` → session stats, analytics tables
 6. `data_get_ohlcv` with `summary: true` → price action summary
 7. `capture_screenshot` → visual confirmation
+8. Follow `skills/vision-chart-analysis/SKILL.md` for the vision report (IPA + classic patterns, Tunnel Domènec, Top 3 scenarios, final decision label). Also apply `rules.json` bias/risk when judging operability.
 
 ### "Change the chart"
 - `chart_set_symbol` → switch ticker (e.g., "AAPL", "ES1!", "NYMEX:CL1!")
@@ -60,7 +72,8 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 6. `replay_stop` → return to realtime
 
 ### "Screen multiple symbols"
-- `batch_run` with `symbols: ["ES1!", "NQ1!", "YM1!"]` and `action: "screenshot"` or `"get_ohlcv"`
+1. `tv watchlist sync` → refresh `rules.json` from live TV list
+2. `batch_run` with `symbols: [...]` and `action: "screenshot"` or `"get_ohlcv"` — or `morning_brief` / `tv brief` using the synced watchlist
 
 ### "Draw on the chart"
 - `draw_shape` → horizontal_line, trend_line, rectangle, text (pass point + optional point2)
@@ -123,7 +136,7 @@ These tools can return large payloads. Follow these rules to avoid context bloat
 ## Architecture
 
 ```
-Claude Code ←→ MCP Server (stdio) ←→ CDP (localhost:9222) ←→ TradingView Desktop (Electron)
+Claude Code ←→ MCP Server (stdio) ←→ CDP (localhost:9223) ←→ TradingView Desktop (Electron)
 ```
 
 Pine graphics path: `study._graphics._primitivesCollection.dwglines.get('lines').get(false)._primitivesDataById`

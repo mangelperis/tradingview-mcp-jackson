@@ -18,11 +18,12 @@ export function registerHealthTools(server) {
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
   });
 
-  server.tool('tv_launch', 'Launch TradingView Desktop with Chrome DevTools Protocol (remote debugging) enabled. Auto-detects install location on Mac, Windows, and Linux.', {
-    port: z.coerce.number().optional().describe('CDP port (default 9222)'),
-    kill_existing: z.coerce.boolean().optional().describe('Kill existing TradingView instances first (default true)'),
-  }, async ({ port, kill_existing }) => {
-    try { return jsonResult(await core.launch({ port, kill_existing })); }
+  server.tool('tv_launch', 'Launch TradingView Desktop with CDP enabled, or reuse an already-running TradingView CDP session on the port. Does NOT spawn a second instance if TradingView is already healthy (avoids blank windows). Pass force_restart=true only to kill and relaunch.', {
+    port: z.coerce.number().optional().describe('CDP port (default: TV_CDP_PORT env or 9223)'),
+    kill_existing: z.coerce.boolean().optional().describe('When starting fresh, kill existing TradingView processes first (default true). Ignored if a healthy TV CDP session is already on the port unless force_restart is set.'),
+    force_restart: z.coerce.boolean().optional().describe('Kill and relaunch even if TradingView CDP is already healthy (default false). Prefer leaving this unset.'),
+  }, async ({ port, kill_existing, force_restart }) => {
+    try { return jsonResult(await core.launch({ port, kill_existing, force_restart })); }
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
   });
 }

@@ -2,7 +2,7 @@
 # Launch TradingView Desktop on macOS with Chrome DevTools Protocol enabled
 # Usage: ./scripts/launch_tv_debug_mac.sh [port]
 
-PORT="${1:-9222}"
+PORT="${1:-9223}"
 
 # Auto-detect TradingView install location
 APP=""
@@ -43,7 +43,21 @@ if [ -z "$APP" ] || [ ! -f "$APP" ]; then
   exit 1
 fi
 
-# Kill any existing TradingView
+# Kill any existing TradingView only if we must start fresh
+if curl -s "http://127.0.0.1:$PORT/json/version" 2>/dev/null | grep -qi TradingView; then
+  echo "TradingView already running with CDP on port $PORT — reusing (no second instance)."
+  curl -s "http://localhost:$PORT/json/version" | python3 -m json.tool 2>/dev/null || curl -s "http://localhost:$PORT/json/version"
+  exit 0
+fi
+
+# Port occupied by something else (e.g. Brave)?
+if curl -s "http://127.0.0.1:$PORT/json/version" > /dev/null 2>&1; then
+  echo "Error: port $PORT already has a non-TradingView CDP endpoint."
+  echo "Use another port, e.g.: $0 9223"
+  exit 1
+fi
+
+# Kill any existing TradingView (no healthy CDP on this port)
 pkill -f "TradingView" 2>/dev/null
 sleep 1
 
@@ -56,7 +70,7 @@ echo "PID: $TV_PID"
 # Wait for CDP to be ready
 echo "Waiting for CDP..."
 for i in $(seq 1 15); do
-  if curl -s "http://localhost:$PORT/json/version" > /dev/null 2>&1; then
+  if curl -s "http://localhost:$PORT/json/version" 2>/dev/null | grep -qi TradingView; then
     echo "CDP ready at http://localhost:$PORT"
     curl -s "http://localhost:$PORT/json/version" | python3 -m json.tool 2>/dev/null || curl -s "http://localhost:$PORT/json/version"
     exit 0

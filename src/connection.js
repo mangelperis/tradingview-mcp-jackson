@@ -3,7 +3,9 @@ import CDP from 'chrome-remote-interface';
 let client = null;
 let targetInfo = null;
 const CDP_HOST = 'localhost';
-const CDP_PORT = 9222;
+/** This fork defaults to 9223 so Brave (often on 9222) does not steal the CDP port. */
+export const DEFAULT_CDP_PORT = 9223;
+export const CDP_PORT = Number(process.env.TV_CDP_PORT || DEFAULT_CDP_PORT);
 const MAX_RETRIES = 5;
 const BASE_DELAY = 500;
 

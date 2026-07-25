@@ -9,6 +9,63 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as chart from "./chart.js";
 import * as data from "./data.js";
+import * as watchlist from "./watchlist.js";
+import * as ui from "./ui.js";
+
+/**
+ * Resolve which symbols morning_brief should scan.
+ * Non-empty rules.json watchlist wins; otherwise use TradingView watchlist rows.
+ * @param {{ rulesWatchlist?: string[]|null, tvSymbols?: Array<string|{symbol?: string}>|null }} opts
+ * @returns {{ symbols: string[], source: "rules.json"|"tradingview" }}
+ */
+export function resolveWatchlist({ rulesWatchlist = [], tvSymbols = [] } = {}) {
+  const fromRules = (rulesWatchlist || []).filter(Boolean);
+  if (fromRules.length) {
+    return { symbols: fromRules, source: "rules.json" };
+  }
+  const fromTv = (tvSymbols || [])
+    .map((s) => (typeof s === "string" ? s : s?.symbol))
+    .filter(Boolean);
+  if (fromTv.length) {
+    return { symbols: fromTv, source: "tradingview" };
+  }
+  throw new Error(
+    "No symbols to scan. Open/populate the TradingView watchlist, or set watchlist in rules.json.",
+  );
+}
+
+/**
+ * Pure sync: replace rules.watchlist from TV symbols.
+ * Refuses empty lists so a failed TV read cannot wipe rules.json.
+ * @param {{ rules: object, symbols: Array<string|{symbol?: string}> }} opts
+ * @returns {{ rules: object, symbols: string[], previous_count: number }}
+ */
+export function applyWatchlistSync({ rules, symbols = [] } = {}) {
+  if (!rules || typeof rules !== "object") {
+    throw new Error("rules object is required");
+  }
+  const next = [];
+  const seen = new Set();
+  for (const s of symbols || []) {
+    const sym = typeof s === "string" ? s : s?.symbol;
+    if (!sym || seen.has(sym)) continue;
+    seen.add(sym);
+    next.push(sym);
+  }
+  if (!next.length) {
+    throw new Error(
+      "TradingView watchlist is empty — refusing to overwrite rules.json. Open the watchlist panel and ensure it has symbols.",
+    );
+  }
+  const previous_count = Array.isArray(rules.watchlist)
+    ? rules.watchlist.length
+    : 0;
+  return {
+    rules: { ...rules, watchlist: next },
+    symbols: next,
+    previous_count,
+  };
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "../../");
@@ -65,14 +122,55 @@ function loadRules(rulesPath) {
   );
 }
 
+/**
+ * Pull TradingView watchlist into rules.json (replace). Refuses empty TV lists.
+ * @param {{ rules_path?: string }} [opts]
+ */
+export async function syncWatchlistToRules({ rules_path } = {}) {
+  const { rules, path: loadedFrom } = loadRules(rules_path);
+
+  try {
+    await ui.openPanel({ panel: "watchlist", action: "open" });
+    await new Promise((r) => setTimeout(r, 400));
+  } catch (_) {
+    // Panel open is best-effort; get() will still try to read
+  }
+
+  const tv = await watchlist.get();
+  const applied = applyWatchlistSync({
+    rules,
+    symbols: tv.symbols || [],
+  });
+
+  writeFileSync(loadedFrom, JSON.stringify(applied.rules, null, 2) + "\n");
+
+  return {
+    success: true,
+    path: loadedFrom,
+    count: applied.symbols.length,
+    symbols: applied.symbols,
+    previous_count: applied.previous_count,
+    tv_source: tv.source || null,
+  };
+}
+
 export async function runBrief({ rules_path } = {}) {
   const { rules, path: loadedFrom } = loadRules(rules_path);
-  const { watchlist = [], default_timeframe = "240" } = rules;
+  const { watchlist: rulesWatchlist = [], default_timeframe = "240" } = rules;
 
-  if (!watchlist.length) {
-    throw new Error(
-      "rules.json watchlist is empty. Add at least one symbol to your watchlist array.",
-    );
+  let symbols;
+  let watchlistSource;
+  if (rulesWatchlist.length) {
+    ({ symbols, source: watchlistSource } = resolveWatchlist({
+      rulesWatchlist,
+      tvSymbols: [],
+    }));
+  } else {
+    const tv = await watchlist.get();
+    ({ symbols, source: watchlistSource } = resolveWatchlist({
+      rulesWatchlist: [],
+      tvSymbols: tv.symbols || [],
+    }));
   }
 
   // Save current chart state so we can restore after scanning
@@ -85,7 +183,7 @@ export async function runBrief({ rules_path } = {}) {
 
   const results = [];
 
-  for (const symbol of watchlist) {
+  for (const symbol of symbols) {
     try {
       await chart.setSymbol({ symbol });
       await new Promise((r) => setTimeout(r, 900));
@@ -123,6 +221,7 @@ export async function runBrief({ rules_path } = {}) {
     success: true,
     generated_at: new Date().toISOString(),
     rules_loaded_from: loadedFrom,
+    watchlist_source: watchlistSource,
     rules: {
       bias_criteria: rules.bias_criteria || null,
       risk_rules: rules.risk_rules || null,
