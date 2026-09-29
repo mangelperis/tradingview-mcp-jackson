@@ -43,7 +43,7 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 5. `data_get_pine_tables` → session stats, analytics tables
 6. `data_get_ohlcv` with `summary: true` → price action summary
 7. `capture_screenshot` → visual confirmation
-8. Follow `skills/vision-chart-analysis/SKILL.md` for the vision report (IPA + classic patterns, Tunnel Domènec, Top 3 scenarios, final decision label). Also apply `rules.json` bias/risk when judging operability.
+8. Follow `skills/vision-chart-analysis/SKILL.md` for the vision report (IPA + classic patterns, MTF Swing 30/50/200 + Pivot panel, Tunnel as overlay, Top 3 scenarios, final decision label). Apply `rules.json` bias/risk when judging operability. Read that panel with `data_get_pine_tables` (`study_filter` for the swing indicator).
 
 ### "Change the chart"
 - `chart_set_symbol` → switch ticker (e.g., "AAPL", "ES1!", "NYMEX:CL1!")

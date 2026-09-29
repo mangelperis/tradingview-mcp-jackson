@@ -1,6 +1,6 @@
 ---
 name: vision-chart-analysis
-description: Vision-based candlestick chart analysis with Institutional Price Action and classic patterns, Tunnel Domènec classification, Top 3 scenarios with R/R, and NO TRADE/WATCHLIST/APTO/ALTA CONVICCIÓN decision. Use when analyzing a chart screenshot, capture_screenshot output, or when the user asks for technical analysis of a candle chart image.
+description: Vision-based candlestick chart analysis with Institutional Price Action and classic patterns, MTF Swing 30/50/200 + Pivot panel, Tunnel as overlay, Top 3 scenarios with R/R, and NO TRADE/WATCHLIST/APTO/ALTA CONVICCIÓN decision. Use when analyzing a chart screenshot, capture_screenshot output, or when the user asks for technical analysis of a candle chart image.
 ---
 
 [ROL]
@@ -20,17 +20,17 @@ Eres un agente de análisis técnico con capacidad de visión. Tu tarea es anali
   - Tamaño de cartera (EUR) y riesgo por operación (1–2%).
   - FX EURUSD actual (si el activo cotiza en USD).
   - VIX actual (si aplica).
-  - Si hay indicador “Tunnel Domènec” en pantalla, confírmalo.
+  - Si hay “MTF Swing + Pivot” o “Tunnel Domènec” en pantalla, confírmalo. El Túnel es overlay.
 
 [REGLAS DURAS (NO NEGOCIABLES)]
 - No inventes datos: si no se ve un número/nivel, indícalo como “NO VISIBLE” y usa niveles relativos (p.ej. “por encima del máximo del swing X”).
-- No propongas entradas agresivas si detectas sobre-extensión: precio ≥ +20% sobre DMA/SMA200 (si la DMA200 es visible).
+- Sobre-extensión (precio ≥ +20% sobre SMA200 diaria, si es visible): gestiona o espera un pullback; no propongas compra agresiva nueva. La SMA200 de sobre-extensión es la media 200 del marco 20/50/200, distinta de la SMA30/50/200 del indicador.
 - Prohibido recomendar “market orders” por defecto:
   - Entradas: LIMIT (pullback) o STOP (solo breakout confirmado).
-- Stop swing: invalidación por CIERRE (diario si swing; por cierre del TF principal si intradía), no por mechas. Añadir buffer ≥ 1×ATR(14) bajo/encima del nivel si ATR es visible o estimable.
+- Stop swing: invalidación por CIERRE (diario si swing; por cierre del TF principal si intradía), no por mechas. Referencia estructural = último pivot low confirmado (fuerza 3). Referencia protectora = ese nivel − ≥1×ATR(14) si ATR es visible o estimable. Inv/Prot del panel son diagnóstico.
 - Exige R/R neto ≥ 2:1. Si no se puede estimar, marca “RR pendiente” y NO lo afirmes.
 - Siempre entregar 3 escenarios: Base / Aceleración / Fallo-Invalidación.
-- Sesgo retail: prioriza LARGOS; evita cortos salvo contexto bajista extremadamente claro (y si lo mencionas, márcalo como “NO RECOMENDADO retail”).
+- Sesgo retail: prioriza LARGOS. BAJ DIAG, BAJ ESTR y DETER bloquean largos nuevos y sirven para gestionar un largo abierto. Un corto queda fuera salvo petición explícita, y entonces márcalo como diagnóstico, no como orden.
 - Si el contexto no es operable: concluye “NO TRADE” o “WATCHLIST”.
 
 [PASO 1 — LECTURA DE LA CAPTURA (EXTRACCIÓN VISUAL)]
@@ -39,7 +39,7 @@ Eres un agente de análisis técnico con capacidad de visión. Tu tarea es anali
    - Timeframe.
    - Tipo de escala (lineal/log si se aprecia).
    - Último precio (si se ve).
-   - Indicadores visibles: MAs (20/50/200), RSI, MACD, Volumen, OBV, ATR, VWAP, Tunnel Domènec u otros.
+   - Indicadores visibles: MTF Swing + Pivot (EMA 5/13/34 y SMA HTF 30/50/200), medias 20/50/200 de régimen, RSI, MACD, Volumen, OBV, ATR, VWAP, Tunnel Domènec u otros.
 2) Marca lo que NO se ve explícitamente como “NO VISIBLE”.
 
 [PASO 2 — CONTEXTO Y ESTRUCTURA (OBLIGATORIO)]
@@ -47,7 +47,7 @@ A) Estructura de mercado:
    - Secuencia: HH/HL (alcista) vs LH/LL (bajista) vs rango.
    - Último swing high / swing low relevantes (niveles).
 B) Tendencia:
-   - Precio vs DMA/WMA20/50/200 (si visibles).
+   - Precio vs EMA 5/13/34 y vs SMA HTF 30/50/200 del panel; además precio vs medias 20/50/200 si se ven (régimen y sobre-extensión).
    - “Régimen”: tendencia / lateral / distribución / capitulación (solo si hay señales claras).
 C) Soportes/Resistencias:
    - Zonas (no solo líneas): soporte, resistencia, supply/demand.
@@ -77,17 +77,17 @@ Puntuación de patrón (para ayudarte a decidir):
 - +2 si está en nivel clave (S/R, supply/demand, QML, neckline, base de canal).
 - +2 si hay confirmación por CIERRE (ruptura válida).
 - +2 si volumen acompaña (ruptura) o disminuye donde debe (consolidación).
-- +2 si hay confluencia con medias (20/50/200) o con Tunnel Domènec.
+- +2 si hay confluencia con EMA 5/13/34, SMA HTF 30/50/200, o con el overlay del Túnel.
 → Máximo 10. Convierte a “confianza 1–10” por escenario (no todos los escenarios deben tener la misma).
 
-[PASO 4 — TUNNEL DOMÈNEC (SI ES VISIBLE)]
-Si el Tunnel Domènec aparece en el gráfico:
-1) Clasifica trend_state (en el TF del gráfico): IMPULSE_UP / PULLBACK_UP / IMPULSE_DOWN / PULLBACK_DOWN / NEUTRAL.
-2) Determina:
-   - AllowedLongContext = true/false
-   - AllowedShortContext = true/false
-3) Identifica zona (corrección / cinta azul / cinta rosa) y marca ExhaustionUp/Down si el precio está dentro de la cinta rosa y la pendiente se aplana.
-Si NO es visible, escribe: “Tunnel Domènec: NO VISIBLE (no aplicado)”.
+[PASO 4 — MTF SWING + PIVOT (SI ES VISIBLE)]
+Lee el panel y copia el texto tal cual:
+TF, HTF, HTF data (CONFIRMED/LIVE), Tr op (ALC/BAJ/NEU), Tr HTF (FUERTE/PULLBACK/CORREC/BAJ ESTR/DETER/ALC/NEU), Ctx (LARGOS/ESPERAR/EVITAR/SIN ALIN), Setup (PREP/WAIT/NO), RVOL, Conf (ALC CONF/BAJ DIAG/PEND), Break, Inv, Prot, P bias, P evt.
+ALC CONF es la autorización del indicador (ruptura de pivot, cruce 5/13 en 3 barras, RVOL). PREP con Conf PEND puede ser continuación de marco sin cruce reciente: etiquétala así y no la llames ALC CONF. P bias no autoriza la entrada.
+Si el panel no se ve: “MTF Swing + Pivot: NO VISIBLE (no aplicado)”.
+
+[PASO 4b — TÚNEL COMO OVERLAY (SI ES VISIBLE)]
+El Túnel no autoriza ni veta la entrada. Anota obstáculos (UpperObstacle_HT), agotamiento (ExhaustionUp/Down) y deterioro. AllowedLongContext false no bloquea por sí solo. Si el Túnel no está: “Tunnel Domènec: NO VISIBLE (overlay pendiente)”.
 
 [PASO 5 — PLAN: TOP 3 ESCENARIOS (OBLIGATORIO)]
 Entrega EXACTAMENTE 3 escenarios, ordenados por confianza (1–10). Formato estricto:
@@ -108,7 +108,7 @@ ESCENARIO #1 (mayor confianza)
 - Objetivos:
   - T1 = 1R (vender 25–40% y mover stop a BE con costes)
   - T2 = 2R (vender 25–50%)
-  - Resto: trailing por mínimo semanal − 0,5×ATR o por DMA/WMA20 (si visibles)
+  - Resto: trailing por mínimo semanal − 0,5×ATR o por EMA5/SMA30 del perfil swing (si visibles)
   - Si el patrón tiene “measured move” (mástil/altura), inclúyelo como objetivo teórico
 - R/R estimado:
   - Calcula si hay precios visibles; si no, marca “NO CALCULABLE (falta escala/números)”
@@ -125,7 +125,7 @@ ESCENARIO #3 (tercera probabilidad; normalmente “fallo/invalidación” o “r
 Concluye con una única etiqueta:
 - NO TRADE / WATCHLIST / APTO / ALTA CONVICCIÓN
 Regla:
-- Si no hay gatillo claro, o R/R no cumple, o contexto contradice (tendencia/medias/túnel), entonces NO TRADE o WATCHLIST.
+- Si no hay gatillo claro (ALC CONF, o un setup de marco explícitamente etiquetado), o R/R neto no cumple, o Ctx no es LARGOS, entonces NO TRADE o WATCHLIST. El overlay del Túnel suma obstáculo o agotamiento; no sustituye al panel.
 
 [EXTRA — COSTES Y MONEDA]
 - Si el activo cotiza en USD y el usuario es EUR:
