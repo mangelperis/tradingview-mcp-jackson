@@ -20,7 +20,7 @@ const FIND_MONACO = `
     }
     if (!fiberKey) return null;
     var current = el[fiberKey];
-    for (var d = 0; d < 15; d++) {
+    for (var d = 0; d < 60; d++) {
       if (!current) break;
       if (current.memoizedProps && current.memoizedProps.value && current.memoizedProps.value.monacoEnv) {
         var env = current.memoizedProps.value.monacoEnv;
