@@ -1,0 +1,1641 @@
+//@version=6
+
+indicator('MTF Swing 30/50/200 + Pivot Bias', shorttitle = 'MTF Swing + Pivot', overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+
+
+
+// ========================================
+
+// INPUTS
+
+// ========================================
+
+
+
+string GRP_HTF = 'Marco superior'
+
+autoHTF = input.bool(true, 'Marco superior automatico', tooltip = 'Mapeo orientado a swing. 4H -> 1D y 1D -> 1W.', group = GRP_HTF)
+
+manualHTF = input.timeframe('1D', 'Marco superior manual', tooltip = 'Se usa solo cuando el modo automatico esta desactivado.', group = GRP_HTF)
+
+useConfirmedHTF = input.bool(true, 'Usar HTF confirmado (sin repaint)', tooltip = 'Usa la ultima vela cerrada del marco superior. Reduce repaint a costa de un cierre HTF de retraso.', group = GRP_HTF)
+
+
+
+string GRP_MA = 'Medias'
+
+entryMAType = input.string('EMA', 'Media operativa', options = ['SMA', 'EMA', 'SMMA (RMA)', 'WMA', 'VWMA', 'EVWAP', 'VRMA'], tooltip = 'EMA por defecto para 5/13/34: capa rapida de setup y momentum.', group = GRP_MA)
+swingMAType = input.string('SMA', 'Media estructural HTF', options = ['SMA', 'EMA', 'WMA'], tooltip = 'SMA por defecto para 30/50/200. La 30 sigue la tendencia swing, la 50 cubre la capa intermedia y la 200 actua como estructura primaria.', group = GRP_MA)
+
+srcInput = input.source(hlc3, 'Fuente EVWAP/VRMA', tooltip = 'Fuente de precio usada solo por EVWAP/VRMA.', group = GRP_MA)
+
+decayMultiplier = input.float(1.0, 'Multiplicador decay', minval = 0.1, maxval = 10.0, step = 0.1, tooltip = 'Solo EVWAP/VRMA. Mayor valor = respuesta mas rapida.', group = GRP_MA)
+
+
+
+entryFastLen = input.int(5, 'Operativa rapida', minval = 1, group = 'Setup operativo (5-13-34)')
+
+entryMidLen = input.int(13, 'Operativa media', minval = 1, group = 'Setup operativo (5-13-34)')
+
+entrySlowLen = input.int(34, 'Operativa lenta', minval = 1, group = 'Setup operativo (5-13-34)')
+
+
+
+// IMPLEMENTATION CHOICE: 30/50/200 para swing; no redefine una regla canonica del framework.
+// 30 = tendencia swing / trailing, 50 = capa intermedia, 200 = estructura primaria.
+htfFastLen = input.int(30, 'Swing / trailing', minval = 1, group = 'Estructura HTF (30-50-200)')
+htfMidLen = input.int(50, 'Intermedia', minval = 1, group = 'Estructura HTF (30-50-200)')
+htfSlowLen = input.int(200, 'Estructural', minval = 1, group = 'Estructura HTF (30-50-200)')
+
+
+
+string GRP_SIGNAL = 'Confirmacion'
+
+pivotStrength = input.int(3, 'Fuerza del pivot', minval = 1, maxval = 10, tooltip = 'Barras a izquierda y derecha para confirmar un swing. 3 reduce ruido frente a un pivot 2 y encaja mejor con swing 4H/D.', group = GRP_SIGNAL)
+
+signalWindowBars = input.int(3, 'Ventana tras cruce 5/13', minval = 0, maxval = 10, tooltip = 'Permite que el cruce de momentum y la ruptura ocurran en barras distintas.', group = GRP_SIGNAL)
+
+requireVolumeConfirmation = input.bool(true, 'Exigir volumen relativo', tooltip = 'La confirmacion requiere volumen relativo minimo cuando esta activo.', group = GRP_SIGNAL)
+
+volumeLength = input.int(20, 'Media de volumen', minval = 2, group = GRP_SIGNAL)
+
+minRelVolume = input.float(1.3, 'Volumen relativo minimo', minval = 0.1, step = 0.1, tooltip = '1.3 = 130% del volumen medio.', group = GRP_SIGNAL)
+
+invalidationByClose = input.bool(true, 'Invalidar por cierre', tooltip = 'Por defecto una mecha no invalida la referencia swing.', group = GRP_SIGNAL)
+
+
+
+string GRP_RISK = 'Referencias de riesgo'
+
+atrLength = input.int(14, 'ATR', minval = 1, group = GRP_RISK)
+
+atrBuffer = input.float(1.0, 'Buffer ATR protector', minval = 1.0, step = 0.1, tooltip = 'Referencia protectora = invalidacion estructural +/- buffer ATR. No sustituye el stop final del plan.', group = GRP_RISK)
+
+showPositionSize = input.bool(false, 'Mostrar tamano simple (diagnostico)', tooltip = 'Calculo basico por distancia a proteccion. No aplica effective_risk_scalar ni sustituye el dimensionamiento del portfolio.', group = GRP_RISK)
+
+accountBalance = input.float(10000.0, 'Capital de referencia', minval = 0.0, group = GRP_RISK)
+
+riskType = input.string('Porcentaje', 'Tipo de riesgo', options = ['Porcentaje', 'Importe fijo'], group = GRP_RISK)
+
+riskAmount = input.float(1.0, 'Riesgo (% o importe)', minval = 0.0, group = GRP_RISK)
+
+
+
+string GRP_DISPLAY = 'Visualizacion'
+
+showEntryMAs = input.bool(true, 'Mostrar medias operativas', group = GRP_DISPLAY)
+
+showHTFMAs = input.bool(true, 'Mostrar medias superiores', group = GRP_DISPLAY)
+
+showDashboard = input.bool(true, 'Mostrar panel', group = GRP_DISPLAY)
+
+showBreakoutLines = input.bool(true, 'Mostrar niveles de ruptura', group = GRP_DISPLAY)
+
+extendMode = input.string('Solo ultimo', 'Extension niveles', options = ['Todos', 'Solo ultimo', 'Ninguno'], group = GRP_DISPLAY)
+
+maxBreakoutLines = input.int(12, 'Maximo niveles', minval = 1, maxval = 100, group = GRP_DISPLAY)
+
+
+
+entryFastColor = input.color(color.new(color.lime, 0), 'Operativa rapida', group = 'Colores')
+
+entryMidColor = input.color(color.new(color.yellow, 0), 'Operativa media', group = 'Colores')
+
+entrySlowColor = input.color(color.new(color.orange, 0), 'Operativa lenta', group = 'Colores')
+
+htfFastColor = input.color(color.new(color.aqua, 20), 'HTF 30', group = 'Colores')
+htfMidColor = input.color(color.new(color.blue, 20), 'HTF 50', group = 'Colores')
+htfSlowColor = input.color(color.new(color.purple, 20), 'HTF 200', group = 'Colores')
+
+monochromeMode = input.bool(false, 'Modo monocromo', tooltip = 'Colorea todas las medias segun la alineacion.', group = 'Colores')
+
+bullColor = input.color(#6baed6, 'Alcista', group = 'Colores')
+
+bearColor = input.color(#e65100, 'Bajista', group = 'Colores')
+
+sidewaysColor = input.color(#787b86, 'Neutral', group = 'Colores')
+
+
+
+
+
+// ========================================
+// PIVOT BIAS INTRADIA - TIMING ONLY
+// RULE: MTF-AUTH-01 / MTF-AUTH-03
+// El Pivot diario es diagnostico de timing. No autoriza ni invalida por si solo
+// una tesis swing definida por marcos diario/semanal.
+// ========================================
+
+string GRP_PIVOT = 'Pivot Bias intradia'
+enablePivotBias = input.bool(true, 'Activar Pivot Bias', group = GRP_PIVOT)
+pivotSessionMode = input.string('EXCHANGE_REGULAR', 'Fuente de sesion', options = ['EXCHANGE_REGULAR', 'CUSTOM'], group = GRP_PIVOT)
+pivotCustomHours = input.session('0930-1600', 'Horario personalizado', group = GRP_PIVOT)
+pivotCustomDays = input.string('23456', 'Dias personalizados', tooltip = 'Dias Pine: 1=domingo ... 7=sabado. 23456 = lunes-viernes.', group = GRP_PIVOT)
+pivotGuardSplits = input.bool(true, 'Bloquear eventos Pivot en dia de split', tooltip = 'El Pivot sigue visible, pero RECUPERA/PIERDE se bloquean cuando TradingView informa de un split.', group = GRP_PIVOT)
+showPivotLevel = input.bool(true, 'Mostrar Pivot diario', group = GRP_PIVOT)
+showPivotOutsideSession = input.bool(false, 'Mostrar Pivot fuera de sesion', group = GRP_PIVOT)
+showPivotBiasBackground = input.bool(false, 'Sombrear sesgo Pivot', group = GRP_PIVOT)
+showPivotTransitionLabels = input.bool(true, 'Mostrar triangulos de cruce Pivot', group = GRP_PIVOT)
+showPivotPrevOHLC = input.bool(false, 'Mostrar H/L/C diario previo', group = GRP_PIVOT)
+showPivotInDashboard = input.bool(true, 'Mostrar Pivot en panel', group = GRP_PIVOT)
+
+string GRP_TABLE_STYLE = 'Estilo del panel'
+
+dashboardPosition = input.string('Top Right', 'Posicion', options = ['Top Left', 'Top Center', 'Top Right', 'Middle Left', 'Middle Center', 'Middle Right', 'Bottom Left', 'Bottom Center', 'Bottom Right'], group = GRP_TABLE_STYLE)
+
+dashboardSize = input.string('tiny', 'Tamano texto', options = ['tiny', 'small', 'normal', 'large', 'huge'], group = GRP_TABLE_STYLE)
+
+tableBgColor = input.color(color.new(color.white, 90), 'Fondo', group = GRP_TABLE_STYLE)
+
+tableTextColor = input.color(color.black, 'Texto', group = GRP_TABLE_STYLE)
+
+tableHeaderBgColor = input.color(color.new(color.gray, 70), 'Fondo cabecera', group = GRP_TABLE_STYLE)
+
+tableHeaderTextColor = input.color(color.black, 'Texto cabecera', group = GRP_TABLE_STYLE)
+
+tableBorderWidth = input.int(1, 'Borde', minval = 0, maxval = 3, group = GRP_TABLE_STYLE)
+
+tableBorderColor = input.color(color.gray, 'Color borde', group = GRP_TABLE_STYLE)
+
+tableFrameColor = input.color(color.black, 'Color marco', group = GRP_TABLE_STYLE)
+
+tableFrameWidth = input.int(1, 'Grosor marco', minval = 0, maxval = 5, group = GRP_TABLE_STYLE)
+
+
+
+// ========================================
+
+// NIVELES DE RUPTURA CONFIRMADOS
+
+// ========================================
+
+
+
+type BreakoutLevel
+
+    line levelLine
+
+    label levelLabel
+
+    string direction       // "UP" o "DOWN"
+
+    float breakoutLevel    // Pivot roto
+
+    float stopPrice        // Referencia de invalidacion estructural
+
+    float protectionRef    // Referencia protectora con ATR
+
+    float entryPrice       // Cierre de confirmacion
+
+    float positionSize     // Tamano simple diagnostico
+
+    int startTime          // Tiempo del pivot
+
+    int triggerTime        // Tiempo de confirmacion
+
+    int pivotBar
+
+
+
+var breakoutLevels = array.new<BreakoutLevel>()
+
+
+
+// Ultima confirmacion activa para el panel.
+
+var string latestDirection = ''
+
+var float latestEntryPrice = na
+
+var float latestBreakoutLevel = na
+
+var float latestInvalidationRef = na
+
+var float latestProtectionRef = na
+
+var float latestPositionSize = na
+
+var int latestTriggerTime = na
+
+
+
+// ========================================
+
+// DIMENSIONAMIENTO SIMPLE (DIAGNOSTICO)
+
+// ========================================
+
+
+
+getContractSize() =>
+
+    ticker = syminfo.ticker
+
+    if str.contains(ticker, "ES") or str.contains(ticker, "MES")
+
+        50.0
+
+    else if str.contains(ticker, "NQ") or str.contains(ticker, "MNQ")
+
+        20.0
+
+    else if str.contains(ticker, "YM") or str.contains(ticker, "MYM")
+
+        5.0
+
+    else if str.contains(ticker, "RTY") or str.contains(ticker, "M2K")
+
+        50.0
+
+    else if str.contains(ticker, "CL") or str.contains(ticker, "MCL")
+
+        1000.0
+
+    else if str.contains(ticker, "GC") or str.contains(ticker, "MGC")
+
+        100.0
+
+    else if str.contains(ticker, "SI") or str.contains(ticker, "SIL")
+
+        5000.0
+
+    else
+
+        1.0
+
+
+
+calculatePositionSize(float entry, float protectiveRef, float riskBudget) =>
+
+    riskPerUnit = math.abs(entry - protectiveRef)
+
+    positionSize = riskPerUnit > 0 ? riskBudget / riskPerUnit : 0.0
+
+    detectedMarket = syminfo.type
+
+    if detectedMarket == "futures" or detectedMarket == "future" or detectedMarket == "cfd" or detectedMarket == "index"
+
+        positionSize := positionSize / getContractSize()
+
+    positionSize
+
+
+
+formatPositionSize(float size) =>
+
+    detectedMarket = syminfo.type
+
+    if detectedMarket == "futures" or detectedMarket == "future" or detectedMarket == "cfd" or detectedMarket == "index"
+
+        str.tostring(size, '#.##') + ' ct'
+
+    else
+
+        str.tostring(size, '#.####') + ' uds'
+
+
+
+// ========================================
+
+// MAPEO DEL MARCO SUPERIOR
+
+// ========================================
+
+
+
+getHTFPeriod() =>
+
+    int tfSeconds = timeframe.in_seconds()
+
+    string result = na
+
+    if tfSeconds <= 15           // <=15s -> 5m
+
+        result := "5"
+
+    else if tfSeconds <= 60      // <=1m -> 15m
+
+        result := "15"
+
+    else if tfSeconds <= 180     // <=3m -> 30m
+
+        result := "30"
+
+    else if tfSeconds <= 300     // <=5m -> 1H
+
+        result := "60"
+
+    else if tfSeconds <= 900     // <=15m -> 4H
+
+        result := "240"
+
+    else if tfSeconds <= 3600    // <=1H -> 1D
+
+        result := "1D"
+
+    else if tfSeconds <= 14400   // <=4H -> 1D
+
+        result := "1D"
+
+    else if tfSeconds <= 86400   // <=1D -> 1W
+
+        result := "1W"
+
+    else if tfSeconds <= 604800  // <=1W -> 1M
+
+        result := "1M"
+
+    else                         // marcos mayores -> 3M
+
+        result := "3M"
+
+    result
+
+
+
+selectedHTF = autoHTF ? getHTFPeriod() : manualHTF
+
+htfIsHigher = timeframe.in_seconds(selectedHTF) > timeframe.in_seconds()
+
+
+// ========================================
+// PIVOT BIAS: DATOS DIARIOS CONFIRMADOS
+// RULE: NR-01 / NR-02 / NR-07
+// Sin lookahead_on. Se solicita el diario con lookahead_off y, al comenzar
+// un nuevo dia, se congela el valor observado en la ultima barra del dia previo.
+// El modulo se desactiva funcionalmente en >=1D; no aborta el indicador MTF.
+// ========================================
+
+pivotModuleActive = enablePivotBias and timeframe.isintraday
+
+[dailyHighLive, dailyLowLive, dailyCloseLive] = request.security(
+     syminfo.tickerid,
+     'D',
+     [high, low, close],
+     barmerge.gaps_off,
+     barmerge.lookahead_off)
+
+pivotNewTradingDay = ta.change(time('D')) != 0
+var float prevDayHigh = na
+var float prevDayLow = na
+var float prevDayClose = na
+if pivotNewTradingDay
+    prevDayHigh := dailyHighLive[1]
+    prevDayLow := dailyLowLive[1]
+    prevDayClose := dailyCloseLive[1]
+
+dailyPivot = (prevDayHigh + prevDayLow + prevDayClose) / 3.0
+validDailyPivot = pivotModuleActive and not na(dailyPivot)
+
+pivotCustomSession = pivotCustomHours + ':' + pivotCustomDays
+pivotCustomInSession = not na(time(timeframe.period, pivotCustomSession))
+pivotInSession = pivotModuleActive and (pivotSessionMode == 'EXCHANGE_REGULAR' ? session.ismarket : pivotCustomInSession)
+
+pivotSplitNumerator = request.splits(syminfo.tickerid, splits.numerator, barmerge.gaps_on)
+var bool pivotSplitToday = false
+if pivotNewTradingDay
+    pivotSplitToday := false
+if pivotModuleActive and not na(pivotSplitNumerator)
+    pivotSplitToday := true
+
+pivotCorporateActionBlocked = pivotGuardSplits and pivotSplitToday
+pivotSignalAllowed = pivotModuleActive and pivotInSession and pivotInSession[1] and validDailyPivot and not pivotCorporateActionBlocked
+
+pivotBias = not validDailyPivot ? 'N/D' : close > dailyPivot ? 'ALCISTA' : close < dailyPivot ? 'BAJISTA' : 'NEUTRAL'
+pivotPosition = not validDailyPivot ? 'N/D' : close > dailyPivot ? 'SOBRE PIVOT' : close < dailyPivot ? 'BAJO PIVOT' : 'EN PIVOT'
+
+// RULE: TECH-CLOSE-01 / TECH-CLOSE-05
+// RECUPERA/PIERDE son eventos confirmados al cierre del timeframe operativo.
+pivotReclaimed = barstate.isconfirmed and pivotSignalAllowed and ta.crossover(close, dailyPivot)
+pivotLost = barstate.isconfirmed and pivotSignalAllowed and ta.crossunder(close, dailyPivot)
+
+pivotLastEvent = pivotReclaimed ? 'RECUPERA PIVOT' : pivotLost ? 'PIERDE PIVOT' : '-'
+pivotDistPct = validDailyPivot and dailyPivot != 0.0 ? (close / dailyPivot - 1.0) * 100.0 : na
+
+pivotDisplayState = not enablePivotBias ? 'DESACTIVADO' : not timeframe.isintraday ? 'INACTIVO >=1D' : not validDailyPivot ? 'DATO INSUFICIENTE' : pivotCorporateActionBlocked ? 'SPLIT - EVENTOS BLOQUEADOS' : not pivotInSession ? 'FUERA SESION' : pivotBias
+
+
+// ========================================
+
+// STATE VARIABLES FOR EVWAP/VRMA
+
+// ========================================
+
+
+
+var float evwapEntryFastNum = na
+var float evwapEntryFastDen = na
+
+var float evwapEntryMidNum = na
+var float evwapEntryMidDen = na
+
+var float evwapEntrySlowNum = na
+var float evwapEntrySlowDen = na
+
+var float vrmaEntryFastNum = na
+var float vrmaEntryFastDen = na
+
+var float vrmaEntryMidNum = na
+var float vrmaEntryMidDen = na
+
+var float vrmaEntrySlowNum = na
+var float vrmaEntrySlowDen = na
+
+var float evwapHTFFastNum = na
+var float evwapHTFFastDen = na
+
+var float evwapHTFMidNum = na
+var float evwapHTFMidDen = na
+
+var float evwapHTFSlowNum = na
+var float evwapHTFSlowDen = na
+
+var float vrmaHTFFastNum = na
+var float vrmaHTFFastDen = na
+
+var float vrmaHTFMidNum = na
+var float vrmaHTFMidDen = na
+
+var float vrmaHTFSlowNum = na
+var float vrmaHTFSlowDen = na
+
+
+
+// ========================================
+
+// PIVOTS DE SWING CONFIRMADOS
+
+// ========================================
+
+
+
+var float pivotHigh = na
+
+var float pivotLow = na
+
+var int pivotHighBar = na
+
+var int pivotLowBar = na
+
+var int pivotHighTime = na
+
+var int pivotLowTime = na
+
+
+
+float confirmedPivotHigh = ta.pivothigh(high, pivotStrength, pivotStrength)
+
+float confirmedPivotLow = ta.pivotlow(low, pivotStrength, pivotStrength)
+
+
+
+if not na(confirmedPivotHigh)
+
+    pivotHigh := confirmedPivotHigh
+
+    pivotHighBar := bar_index - pivotStrength
+
+    pivotHighTime := time[pivotStrength]
+
+
+
+if not na(confirmedPivotLow)
+
+    pivotLow := confirmedPivotLow
+
+    pivotLowBar := bar_index - pivotStrength
+
+    pivotLowTime := time[pivotStrength]
+
+
+
+// ========================================
+
+// EVWAP CALCULATIONS (Entry TF)
+
+// ========================================
+
+
+
+float evwap_entryFast = na
+
+float alphaEntryFastEMA = math.min(1.0, (2.0 / (entryFastLen + 1.0)) * decayMultiplier)
+
+if barstate.isfirst or na(evwapEntryFastNum)
+
+    evwapEntryFastNum := srcInput * volume
+
+    evwapEntryFastDen := volume
+
+else
+
+    evwapEntryFastNum := alphaEntryFastEMA * (srcInput * volume) + (1.0 - alphaEntryFastEMA) * evwapEntryFastNum
+
+    evwapEntryFastDen := alphaEntryFastEMA * volume + (1.0 - alphaEntryFastEMA) * evwapEntryFastDen
+
+if evwapEntryFastDen > 0
+
+    evwap_entryFast := evwapEntryFastNum / evwapEntryFastDen
+
+
+
+float evwap_entryMid = na
+
+float alphaEntryMidEMA = math.min(1.0, (2.0 / (entryMidLen + 1.0)) * decayMultiplier)
+
+if barstate.isfirst or na(evwapEntryMidNum)
+
+    evwapEntryMidNum := srcInput * volume
+
+    evwapEntryMidDen := volume
+
+else
+
+    evwapEntryMidNum := alphaEntryMidEMA * (srcInput * volume) + (1.0 - alphaEntryMidEMA) * evwapEntryMidNum
+
+    evwapEntryMidDen := alphaEntryMidEMA * volume + (1.0 - alphaEntryMidEMA) * evwapEntryMidDen
+
+if evwapEntryMidDen > 0
+
+    evwap_entryMid := evwapEntryMidNum / evwapEntryMidDen
+
+
+
+float evwap_entrySlow = na
+
+float alphaEntrySlowEMA = math.min(1.0, (2.0 / (entrySlowLen + 1.0)) * decayMultiplier)
+
+if barstate.isfirst or na(evwapEntrySlowNum)
+
+    evwapEntrySlowNum := srcInput * volume
+
+    evwapEntrySlowDen := volume
+
+else
+
+    evwapEntrySlowNum := alphaEntrySlowEMA * (srcInput * volume) + (1.0 - alphaEntrySlowEMA) * evwapEntrySlowNum
+
+    evwapEntrySlowDen := alphaEntrySlowEMA * volume + (1.0 - alphaEntrySlowEMA) * evwapEntrySlowDen
+
+if evwapEntrySlowDen > 0
+
+    evwap_entrySlow := evwapEntrySlowNum / evwapEntrySlowDen
+
+
+
+// ========================================
+
+// VRMA CALCULATIONS (Entry TF)
+
+// ========================================
+
+
+
+float vrma_entryFast = na
+
+float alphaEntryFastRMA = math.min(1.0, (1.0 / entryFastLen) * decayMultiplier)
+
+if barstate.isfirst or na(vrmaEntryFastNum)
+
+    vrmaEntryFastNum := srcInput * volume
+
+    vrmaEntryFastDen := volume
+
+else
+
+    vrmaEntryFastNum := alphaEntryFastRMA * (srcInput * volume) + (1.0 - alphaEntryFastRMA) * vrmaEntryFastNum
+
+    vrmaEntryFastDen := alphaEntryFastRMA * volume + (1.0 - alphaEntryFastRMA) * vrmaEntryFastDen
+
+if vrmaEntryFastDen > 0
+
+    vrma_entryFast := vrmaEntryFastNum / vrmaEntryFastDen
+
+
+
+float vrma_entryMid = na
+
+float alphaEntryMidRMA = math.min(1.0, (1.0 / entryMidLen) * decayMultiplier)
+
+if barstate.isfirst or na(vrmaEntryMidNum)
+
+    vrmaEntryMidNum := srcInput * volume
+
+    vrmaEntryMidDen := volume
+
+else
+
+    vrmaEntryMidNum := alphaEntryMidRMA * (srcInput * volume) + (1.0 - alphaEntryMidRMA) * vrmaEntryMidNum
+
+    vrmaEntryMidDen := alphaEntryMidRMA * volume + (1.0 - alphaEntryMidRMA) * vrmaEntryMidDen
+
+if vrmaEntryMidDen > 0
+
+    vrma_entryMid := vrmaEntryMidNum / vrmaEntryMidDen
+
+
+
+float vrma_entrySlow = na
+
+float alphaEntrySlowRMA = math.min(1.0, (1.0 / entrySlowLen) * decayMultiplier)
+
+if barstate.isfirst or na(vrmaEntrySlowNum)
+
+    vrmaEntrySlowNum := srcInput * volume
+
+    vrmaEntrySlowDen := volume
+
+else
+
+    vrmaEntrySlowNum := alphaEntrySlowRMA * (srcInput * volume) + (1.0 - alphaEntrySlowRMA) * vrmaEntrySlowNum
+
+    vrmaEntrySlowDen := alphaEntrySlowRMA * volume + (1.0 - alphaEntrySlowRMA) * vrmaEntrySlowDen
+
+if vrmaEntrySlowDen > 0
+
+    vrma_entrySlow := vrmaEntrySlowNum / vrmaEntrySlowDen
+
+
+
+// ========================================
+
+// EVWAP/VRMA CALCULATIONS (HTF) - abbreviated
+
+// ========================================
+
+
+
+float evwap_htfFast = na
+
+float alphaHTFFastEMA = math.min(1.0, (2.0 / (htfFastLen + 1.0)) * decayMultiplier)
+
+if barstate.isfirst or na(evwapHTFFastNum)
+
+    evwapHTFFastNum := srcInput * volume
+
+    evwapHTFFastDen := volume
+
+else
+
+    evwapHTFFastNum := alphaHTFFastEMA * (srcInput * volume) + (1.0 - alphaHTFFastEMA) * evwapHTFFastNum
+
+    evwapHTFFastDen := alphaHTFFastEMA * volume + (1.0 - alphaHTFFastEMA) * evwapHTFFastDen
+
+if evwapHTFFastDen > 0
+
+    evwap_htfFast := evwapHTFFastNum / evwapHTFFastDen
+
+
+
+float evwap_htfMid = na
+
+float alphaHTFMidEMA = math.min(1.0, (2.0 / (htfMidLen + 1.0)) * decayMultiplier)
+
+if barstate.isfirst or na(evwapHTFMidNum)
+
+    evwapHTFMidNum := srcInput * volume
+
+    evwapHTFMidDen := volume
+
+else
+
+    evwapHTFMidNum := alphaHTFMidEMA * (srcInput * volume) + (1.0 - alphaHTFMidEMA) * evwapHTFMidNum
+
+    evwapHTFMidDen := alphaHTFMidEMA * volume + (1.0 - alphaHTFMidEMA) * evwapHTFMidDen
+
+if evwapHTFMidDen > 0
+
+    evwap_htfMid := evwapHTFMidNum / evwapHTFMidDen
+
+
+
+float evwap_htfSlow = na
+
+float alphaHTFSlowEMA = math.min(1.0, (2.0 / (htfSlowLen + 1.0)) * decayMultiplier)
+
+if barstate.isfirst or na(evwapHTFSlowNum)
+
+    evwapHTFSlowNum := srcInput * volume
+
+    evwapHTFSlowDen := volume
+
+else
+
+    evwapHTFSlowNum := alphaHTFSlowEMA * (srcInput * volume) + (1.0 - alphaHTFSlowEMA) * evwapHTFSlowNum
+
+    evwapHTFSlowDen := alphaHTFSlowEMA * volume + (1.0 - alphaHTFSlowEMA) * evwapHTFSlowDen
+
+if evwapHTFSlowDen > 0
+
+    evwap_htfSlow := evwapHTFSlowNum / evwapHTFSlowDen
+
+
+
+float vrma_htfFast = na
+
+float alphaHTFFastRMA = math.min(1.0, (1.0 / htfFastLen) * decayMultiplier)
+
+if barstate.isfirst or na(vrmaHTFFastNum)
+
+    vrmaHTFFastNum := srcInput * volume
+
+    vrmaHTFFastDen := volume
+
+else
+
+    vrmaHTFFastNum := alphaHTFFastRMA * (srcInput * volume) + (1.0 - alphaHTFFastRMA) * vrmaHTFFastNum
+
+    vrmaHTFFastDen := alphaHTFFastRMA * volume + (1.0 - alphaHTFFastRMA) * vrmaHTFFastDen
+
+if vrmaHTFFastDen > 0
+
+    vrma_htfFast := vrmaHTFFastNum / vrmaHTFFastDen
+
+
+
+float vrma_htfMid = na
+
+float alphaHTFMidRMA = math.min(1.0, (1.0 / htfMidLen) * decayMultiplier)
+
+if barstate.isfirst or na(vrmaHTFMidNum)
+
+    vrmaHTFMidNum := srcInput * volume
+
+    vrmaHTFMidDen := volume
+
+else
+
+    vrmaHTFMidNum := alphaHTFMidRMA * (srcInput * volume) + (1.0 - alphaHTFMidRMA) * vrmaHTFMidNum
+
+    vrmaHTFMidDen := alphaHTFMidRMA * volume + (1.0 - alphaHTFMidRMA) * vrmaHTFMidDen
+
+if vrmaHTFMidDen > 0
+
+    vrma_htfMid := vrmaHTFMidNum / vrmaHTFMidDen
+
+
+
+float vrma_htfSlow = na
+
+float alphaHTFSlowRMA = math.min(1.0, (1.0 / htfSlowLen) * decayMultiplier)
+
+if barstate.isfirst or na(vrmaHTFSlowNum)
+
+    vrmaHTFSlowNum := srcInput * volume
+
+    vrmaHTFSlowDen := volume
+
+else
+
+    vrmaHTFSlowNum := alphaHTFSlowRMA * (srcInput * volume) + (1.0 - alphaHTFSlowRMA) * vrmaHTFSlowNum
+
+    vrmaHTFSlowDen := alphaHTFSlowRMA * volume + (1.0 - alphaHTFSlowRMA) * vrmaHTFSlowDen
+
+if vrmaHTFSlowDen > 0
+
+    vrma_htfSlow := vrmaHTFSlowNum / vrmaHTFSlowDen
+
+
+
+// ========================================
+
+// STANDARD MA CALCULATIONS
+
+// ========================================
+
+
+
+sma_entryFast = ta.sma(close, entryFastLen)
+
+sma_entryMid = ta.sma(close, entryMidLen)
+
+sma_entrySlow = ta.sma(close, entrySlowLen)
+
+ema_entryFast = ta.ema(close, entryFastLen)
+
+ema_entryMid = ta.ema(close, entryMidLen)
+
+ema_entrySlow = ta.ema(close, entrySlowLen)
+
+rma_entryFast = ta.rma(close, entryFastLen)
+
+rma_entryMid = ta.rma(close, entryMidLen)
+
+rma_entrySlow = ta.rma(close, entrySlowLen)
+
+wma_entryFast = ta.wma(close, entryFastLen)
+
+wma_entryMid = ta.wma(close, entryMidLen)
+
+wma_entrySlow = ta.wma(close, entrySlowLen)
+
+vwma_entryFast = ta.vwma(close, entryFastLen)
+
+vwma_entryMid = ta.vwma(close, entryMidLen)
+
+vwma_entrySlow = ta.vwma(close, entrySlowLen)
+
+
+
+sma_htfFast = ta.sma(close, htfFastLen)
+
+sma_htfMid = ta.sma(close, htfMidLen)
+
+sma_htfSlow = ta.sma(close, htfSlowLen)
+
+ema_htfFast = ta.ema(close, htfFastLen)
+
+ema_htfMid = ta.ema(close, htfMidLen)
+
+ema_htfSlow = ta.ema(close, htfSlowLen)
+
+rma_htfFast = ta.rma(close, htfFastLen)
+
+rma_htfMid = ta.rma(close, htfMidLen)
+
+rma_htfSlow = ta.rma(close, htfSlowLen)
+
+wma_htfFast = ta.wma(close, htfFastLen)
+
+wma_htfMid = ta.wma(close, htfMidLen)
+
+wma_htfSlow = ta.wma(close, htfSlowLen)
+
+vwma_htfFast = ta.vwma(close, htfFastLen)
+
+vwma_htfMid = ta.vwma(close, htfMidLen)
+
+vwma_htfSlow = ta.vwma(close, htfSlowLen)
+
+
+
+// ========================================
+
+// SELECT MA VALUES
+
+// ========================================
+
+
+
+entryFastMA = switch entryMAType
+
+    'SMA' => sma_entryFast
+
+    'EMA' => ema_entryFast
+
+    'SMMA (RMA)' => rma_entryFast
+
+    'WMA' => wma_entryFast
+
+    'VWMA' => vwma_entryFast
+
+    'EVWAP' => evwap_entryFast
+
+    'VRMA' => vrma_entryFast
+
+    => ema_entryFast
+
+
+
+entryMidMA = switch entryMAType
+
+    'SMA' => sma_entryMid
+
+    'EMA' => ema_entryMid
+
+    'SMMA (RMA)' => rma_entryMid
+
+    'WMA' => wma_entryMid
+
+    'VWMA' => vwma_entryMid
+
+    'EVWAP' => evwap_entryMid
+
+    'VRMA' => vrma_entryMid
+
+    => ema_entryMid
+
+
+
+entrySlowMA = switch entryMAType
+
+    'SMA' => sma_entrySlow
+
+    'EMA' => ema_entrySlow
+
+    'SMMA (RMA)' => rma_entrySlow
+
+    'WMA' => wma_entrySlow
+
+    'VWMA' => vwma_entrySlow
+
+    'EVWAP' => evwap_entrySlow
+
+    'VRMA' => vrma_entrySlow
+
+    => ema_entrySlow
+
+
+
+htfFastMA_raw = switch swingMAType
+    'SMA' => sma_htfFast
+    'EMA' => ema_htfFast
+    'WMA' => wma_htfFast
+    => sma_htfFast
+
+htfMidMA_raw = switch swingMAType
+    'SMA' => sma_htfMid
+    'EMA' => ema_htfMid
+    'WMA' => wma_htfMid
+    => sma_htfMid
+
+htfSlowMA_raw = switch swingMAType
+    'SMA' => sma_htfSlow
+    'EMA' => ema_htfSlow
+    'WMA' => wma_htfSlow
+    => sma_htfSlow
+
+
+// Medias del marco superior.
+// RULE: NR-02 / NR-07
+// Todas las solicitudes usan lookahead_off. Para el modo confirmado, al comenzar
+// un nuevo periodo HTF se congela el valor visto en la ultima barra del periodo previo.
+
+htfFastMA_live = request.security(syminfo.tickerid, selectedHTF, htfFastMA_raw, barmerge.gaps_off, barmerge.lookahead_off)
+htfMidMA_live = request.security(syminfo.tickerid, selectedHTF, htfMidMA_raw, barmerge.gaps_off, barmerge.lookahead_off)
+htfSlowMA_live = request.security(syminfo.tickerid, selectedHTF, htfSlowMA_raw, barmerge.gaps_off, barmerge.lookahead_off)
+htfClose_live = request.security(syminfo.tickerid, selectedHTF, close, barmerge.gaps_off, barmerge.lookahead_off)
+
+htfNewPeriod = ta.change(time(selectedHTF)) != 0
+var float htfFastMA_confirmed = na
+var float htfMidMA_confirmed = na
+var float htfSlowMA_confirmed = na
+var float htfClose_confirmed = na
+if htfNewPeriod
+    htfFastMA_confirmed := htfFastMA_live[1]
+    htfMidMA_confirmed := htfMidMA_live[1]
+    htfSlowMA_confirmed := htfSlowMA_live[1]
+    htfClose_confirmed := htfClose_live[1]
+
+htfFastMA = useConfirmedHTF ? htfFastMA_confirmed : htfFastMA_live
+htfMidMA = useConfirmedHTF ? htfMidMA_confirmed : htfMidMA_live
+htfSlowMA = useConfirmedHTF ? htfSlowMA_confirmed : htfSlowMA_live
+htfClose = useConfirmedHTF ? htfClose_confirmed : htfClose_live
+
+
+
+// ========================================
+
+// HELPER FUNCTIONS
+
+// ========================================
+
+
+
+formatTimeframe(string tf) =>
+
+    seconds = timeframe.in_seconds(tf)
+
+    if seconds < 60
+
+        str.tostring(seconds) + "S"
+
+    else if (seconds / 60) < 60
+
+        str.tostring((seconds/60)) + "m"
+
+    else if (seconds/60/60) < 24
+
+        str.tostring((seconds/60/60)) + "H"
+
+    else if (seconds/60/60/24) < 7
+
+        str.tostring((seconds/60/60/24)) + "D"
+
+    else
+
+        str.tostring((seconds/60/60/24/7)) + "W"
+
+
+
+getCurrentTimeframe() =>
+
+    current_seconds = timeframe.in_seconds()
+
+    if current_seconds < 60
+
+        str.tostring(current_seconds) + "S"
+
+    else if (current_seconds / 60) < 60
+
+        str.tostring((current_seconds/60)) + "m"
+
+    else if (current_seconds/60/60) < 24
+
+        str.tostring((current_seconds/60/60)) + "H"
+
+    else
+
+        str.tostring((current_seconds/60/60/24)) + "D"
+
+
+
+getTablePosition(string position) =>
+
+    switch position
+
+        'Top Left' => position.top_left
+
+        'Top Center' => position.top_center
+
+        'Top Right' => position.top_right
+
+        'Middle Left' => position.middle_left
+
+        'Middle Center' => position.middle_center
+
+        'Middle Right' => position.middle_right
+
+        'Bottom Left' => position.bottom_left
+
+        'Bottom Center' => position.bottom_center
+
+        'Bottom Right' => position.bottom_right
+
+        => position.top_right
+
+
+
+getTextSize(string sizeStr) =>
+
+    switch sizeStr
+
+        'tiny' => size.tiny
+
+        'small' => size.small
+
+        'normal' => size.normal
+
+        'large' => size.large
+
+        'huge' => size.huge
+
+        => size.tiny
+
+
+
+// ========================================
+
+// ALINEACION DE TENDENCIA
+
+// ========================================
+
+
+
+entryBullishStack = entryFastMA > entryMidMA and entryMidMA > entrySlowMA
+
+entryBearishStack = entryFastMA < entryMidMA and entryMidMA < entrySlowMA
+
+priceAboveEntryMAs = close > entryFastMA and close > entryMidMA and close > entrySlowMA
+
+priceBelowEntryMAs = close < entryFastMA and close < entryMidMA and close < entrySlowMA
+
+// RULE: MTF-AUTH-01 / MTF-AUTH-02
+// HTF 30/50/200: el HTF clasifica regimen; el timeframe operativo solo define setup.
+htfBullishStack = htfFastMA > htfMidMA and htfMidMA > htfSlowMA
+htfBearishStack = htfFastMA < htfMidMA and htfMidMA < htfSlowMA
+
+priceAboveHTF30 = htfClose > htfFastMA
+priceAboveHTF50 = htfClose > htfMidMA
+priceAboveHTF200 = htfClose > htfSlowMA
+priceBelowHTF30 = htfClose < htfFastMA
+priceBelowHTF50 = htfClose < htfMidMA
+priceBelowHTF200 = htfClose < htfSlowMA
+
+// Estados swing HTF. No son autorizacion de entrada por si solos.
+htfStrong = htfBullishStack and priceAboveHTF30
+htfPullback = htfBullishStack and priceBelowHTF30 and priceAboveHTF50
+htfCorrection = htfMidMA > htfSlowMA and not priceAboveHTF50 and priceAboveHTF200
+htfBearishStructural = htfBearishStack and priceBelowHTF200
+htfDeterioration = priceBelowHTF200 and not htfBearishStructural
+htfBullishRegime = htfMidMA > htfSlowMA and priceAboveHTF200
+htfLongCompatible = htfBullishRegime and priceAboveHTF50
+
+priceAboveHTFMAs = close > htfFastMA and close > htfMidMA and close > htfSlowMA
+priceBelowHTFMAs = close < htfFastMA and close < htfMidMA and close < htfSlowMA
+
+
+
+// ========================================
+
+// MOMENTUM, VOLUMEN Y VOLATILIDAD
+
+// ========================================
+
+
+
+fastCrossMid_Up = ta.crossover(entryFastMA, entryMidMA)
+
+fastCrossMid_Down = ta.crossunder(entryFastMA, entryMidMA)
+
+
+
+barsSinceBullCross = ta.barssince(fastCrossMid_Up)
+
+barsSinceBearCross = ta.barssince(fastCrossMid_Down)
+
+recentBullCross = not na(barsSinceBullCross) and barsSinceBullCross <= signalWindowBars
+
+recentBearCross = not na(barsSinceBearCross) and barsSinceBearCross <= signalWindowBars
+
+
+
+volumeAverage = ta.sma(volume, volumeLength)
+
+relVolume = volumeAverage > 0 ? volume / volumeAverage : na
+
+volumeConfirmed = not requireVolumeConfirmation or (not na(relVolume) and relVolume >= minRelVolume)
+
+
+
+atrValue = ta.atr(atrLength)
+
+
+
+// ========================================
+
+// CONTEXTO -> SETUP -> CONFIRMACION
+
+// ========================================
+
+
+
+// CONTEXTO: el HTF define regimen. No es una entrada.
+// Una correccion bajo la 50 pero sobre la 200 mantiene estructura primaria,
+// pero bloquea nueva entrada hasta recuperar compatibilidad HTF.
+longContext = htfIsHigher and htfLongCompatible
+shortContext = htfIsHigher and htfBearishStructural
+
+
+
+// SETUP: el marco operativo ya se ha reordenado en la misma direccion.
+
+longSetup = longContext and entryBullishStack and priceAboveEntryMAs and priceAboveHTFMAs
+
+shortSetup = shortContext and entryBearishStack and priceBelowEntryMAs and priceBelowHTFMAs
+
+
+
+// CONFIRMACION: ruptura nueva de pivot, cruce reciente, volumen y cierre de vela.
+
+longBreakoutNow = not na(pivotHigh) and close > pivotHigh and close[1] <= pivotHigh
+
+shortBreakoutNow = not na(pivotLow) and close < pivotLow and close[1] >= pivotLow
+
+
+
+longTrigger = barstate.isconfirmed and longSetup and recentBullCross and longBreakoutNow and volumeConfirmed and not na(pivotLow)
+
+shortTrigger = barstate.isconfirmed and shortSetup and recentBearCross and shortBreakoutNow and volumeConfirmed and not na(pivotHigh)
+
+
+
+// ========================================
+
+// REGISTRO DE CONFIRMACIONES
+
+// ========================================
+
+
+
+if longTrigger
+
+    float entryPrice = close
+
+    float stopPrice = pivotLow
+
+    float protectionRef = stopPrice - atrBuffer * atrValue
+
+    float posSize = na
+
+    if showPositionSize
+
+        riskBudget = riskType == 'Porcentaje' ? accountBalance * riskAmount / 100 : riskAmount
+
+        posSize := calculatePositionSize(entryPrice, protectionRef, riskBudget)
+
+
+
+    latestDirection := 'UP'
+
+    latestEntryPrice := entryPrice
+
+    latestBreakoutLevel := pivotHigh
+
+    latestInvalidationRef := stopPrice
+
+    latestProtectionRef := protectionRef
+
+    latestPositionSize := posSize
+
+    latestTriggerTime := time
+
+
+
+    line levelLine = na
+
+    label levelLabel = na
+
+    if showBreakoutLines
+
+        levelLine := line.new(pivotHighTime, pivotHigh, time, pivotHigh,
+
+             color = color.new(color.green, 0), width = 1, style = line.style_solid, xloc = xloc.bar_time)
+
+        levelLabel := label.new(time, pivotHigh, 'RUP+',
+
+             xloc = xloc.bar_time, yloc = yloc.price,
+
+             style = label.style_label_upper_right,
+
+             color = color.new(color.white, 100), textcolor = color.green,
+
+             size = size.small, tooltip = 'Nivel de ruptura alcista confirmado', text_font_family = font.family_monospace)
+
+
+
+    newLevel = BreakoutLevel.new(levelLine, levelLabel, 'UP', pivotHigh,
+
+         stopPrice, protectionRef, entryPrice, posSize, pivotHighTime, time, pivotHighBar)
+
+    array.push(breakoutLevels, newLevel)
+
+    alert('Confirmacion alcista', alert.freq_once_per_bar_close)
+
+
+
+if shortTrigger
+
+    float entryPrice = close
+
+    float stopPrice = pivotHigh
+
+    float protectionRef = stopPrice + atrBuffer * atrValue
+
+    float posSize = na
+
+    if showPositionSize
+
+        riskBudget = riskType == 'Porcentaje' ? accountBalance * riskAmount / 100 : riskAmount
+
+        posSize := calculatePositionSize(entryPrice, protectionRef, riskBudget)
+
+
+
+    latestDirection := 'DOWN'
+
+    latestEntryPrice := entryPrice
+
+    latestBreakoutLevel := pivotLow
+
+    latestInvalidationRef := stopPrice
+
+    latestProtectionRef := protectionRef
+
+    latestPositionSize := posSize
+
+    latestTriggerTime := time
+
+
+
+    line levelLine = na
+
+    label levelLabel = na
+
+    if showBreakoutLines
+
+        levelLine := line.new(pivotLowTime, pivotLow, time, pivotLow,
+
+             color = color.new(color.red, 0), width = 1, style = line.style_solid, xloc = xloc.bar_time)
+
+        levelLabel := label.new(time, pivotLow, 'RUP-',
+
+             xloc = xloc.bar_time, yloc = yloc.price,
+
+             style = label.style_label_lower_right,
+
+             color = color.new(color.white, 100), textcolor = color.red,
+
+             size = size.small, tooltip = 'Nivel de ruptura bajista. Uso diagnostico para evitar largos.', text_font_family = font.family_monospace)
+
+
+
+    newLevel = BreakoutLevel.new(levelLine, levelLabel, 'DOWN', pivotLow,
+
+         stopPrice, protectionRef, entryPrice, posSize, pivotLowTime, time, pivotLowBar)
+
+    array.push(breakoutLevels, newLevel)
+
+    alert('Confirmacion bajista - diagnostico', alert.freq_once_per_bar_close)
+
+
+
+alertcondition(longTrigger, 'Confirmacion alcista', 'MTF: confirmacion alcista por tendencia + momentum + ruptura + volumen')
+
+alertcondition(shortTrigger, 'Confirmacion bajista', 'MTF: confirmacion bajista diagnostica')
+
+
+// Timing intradia: diagnostico independiente del setup swing.
+alertcondition(pivotReclaimed, 'TIMING - Pivot diario recuperado', 'MTF + Pivot: {{ticker}} RECUPERA PIVOT diario por cierre')
+alertcondition(pivotLost, 'TIMING - Pivot diario perdido', 'MTF + Pivot: {{ticker}} PIERDE PIVOT diario por cierre')
+
+
+
+// ========================================
+
+// ACTUALIZACION E INVALIDACION DE NIVELES
+
+// ========================================
+
+
+
+if array.size(breakoutLevels) > 0
+
+    BreakoutLevel latestLevel = na
+
+    int newestTriggerTime = 0
+
+    for j = 0 to array.size(breakoutLevels) - 1
+
+        tempLevel = array.get(breakoutLevels, j)
+
+        if tempLevel.triggerTime > newestTriggerTime
+
+            newestTriggerTime := tempLevel.triggerTime
+
+            latestLevel := tempLevel
+
+
+
+    for i = array.size(breakoutLevels) - 1 to 0
+
+        conf = array.get(breakoutLevels, i)
+
+        bool isInvalidated = false
+
+        if conf.direction == 'UP' and not na(conf.stopPrice)
+
+            isInvalidated := invalidationByClose ? close < conf.stopPrice : low < conf.stopPrice
+
+        else if conf.direction == 'DOWN' and not na(conf.stopPrice)
+
+            isInvalidated := invalidationByClose ? close > conf.stopPrice : high > conf.stopPrice
+
+
+
+        if isInvalidated
+
+            if not na(latestTriggerTime) and conf.triggerTime == latestTriggerTime
+
+                latestDirection := ''
+
+                latestEntryPrice := na
+
+                latestBreakoutLevel := na
+
+                latestInvalidationRef := na
+
+                latestProtectionRef := na
+
+                latestPositionSize := na
+
+                latestTriggerTime := na
+
+            if not na(conf.levelLine)
+
+                line.delete(conf.levelLine)
+
+            if not na(conf.levelLabel)
+
+                label.delete(conf.levelLabel)
+
+            array.remove(breakoutLevels, i)
+
+        else if showBreakoutLines and not na(conf.levelLine)
+
+            bool isLatest = not na(latestLevel) and conf.triggerTime == latestLevel.triggerTime
+
+            int endTime = time
+
+            if extendMode == 'Solo ultimo'
+
+                endTime := isLatest ? time : conf.triggerTime
+
+            else if extendMode == 'Ninguno'
+
+                endTime := conf.triggerTime
+
+            line.set_x2(conf.levelLine, endTime)
+
+
+
+            if not na(conf.levelLabel)
+
+                if extendMode == 'Solo ultimo'
+
+                    if isLatest
+
+                        label.set_x(conf.levelLabel, time)
+
+                    else
+
+                        int middleTime = conf.startTime + int((conf.triggerTime - conf.startTime) / 2)
+
+                        label.set_x(conf.levelLabel, middleTime)
+
+                else if extendMode == 'Ninguno'
+
+                    label.set_x(conf.levelLabel, conf.triggerTime)
+
+                else
+
+                    label.set_x(conf.levelLabel, time)
+
+                label.set_y(conf.levelLabel, conf.breakoutLevel)
+
+
+
+while array.size(breakoutLevels) > maxBreakoutLines
+
+    oldLevel = array.shift(breakoutLevels)
+
+    if not na(oldLevel.levelLine)
+
+        line.delete(oldLevel.levelLine)
+
+    if not na(oldLevel.levelLabel)
+
+        label.delete(oldLevel.levelLabel)
+
+
+
+// ========================================
+
+// GRAFICO
+
+// ========================================
+
+
+
+entryMonoColor = entryBullishStack ? bullColor : entryBearishStack ? bearColor : sidewaysColor
+
+htfMonoColor = htfBullishRegime ? bullColor : htfBearishStructural ? bearColor : sidewaysColor
+
+
+
+entryFastPlotColor = monochromeMode ? entryMonoColor : entryFastColor
+entryMidPlotColor = monochromeMode ? entryMonoColor : entryMidColor
+entrySlowPlotColor = monochromeMode ? entryMonoColor : entrySlowColor
+
+// Mostrar en la escala solo las 3 medias operativas.
+// Sin valores en status line por defecto.
+operativeDisplay = display.pane + display.price_scale
+auxDisplay = display.pane
+
+pEntryFast = plot(showEntryMAs ? entryFastMA : na, 'Operativa rapida (5)', color = entryFastPlotColor, linewidth = 1, display = operativeDisplay)
+pEntryMid = plot(showEntryMAs ? entryMidMA : na, 'Operativa media (13)', color = entryMidPlotColor, linewidth = 1, display = operativeDisplay)
+pEntrySlow = plot(showEntryMAs ? entrySlowMA : na, 'Operativa lenta (34)', color = entrySlowPlotColor, linewidth = 1, display = operativeDisplay)
+
+entryFillColor = entryBullishStack ? color.new(bullColor, 80) : entryBearishStack ? color.new(bearColor, 80) : color.new(sidewaysColor, 90)
+fill(pEntryFast, pEntryMid, showEntryMAs ? entryFillColor : na)
+fill(pEntryMid, pEntrySlow, showEntryMAs ? entryFillColor : na)
+
+htfFastPlotColor = monochromeMode ? htfMonoColor : htfFastColor
+htfMidPlotColor = monochromeMode ? htfMonoColor : htfMidColor
+htfSlowPlotColor = monochromeMode ? htfMonoColor : htfSlowColor
+
+pHTFFast = plot(showHTFMAs ? htfFastMA : na, 'Swing HTF (30)', color = htfFastPlotColor, linewidth = 1, style = plot.style_stepline, display = auxDisplay)
+pHTFMid = plot(showHTFMAs ? htfMidMA : na, 'Intermedia HTF (50)', color = htfMidPlotColor, linewidth = 1, style = plot.style_stepline, display = auxDisplay)
+pHTFSlow = plot(showHTFMAs ? htfSlowMA : na, 'Estructural HTF (200)', color = htfSlowPlotColor, linewidth = 1, style = plot.style_stepline, display = auxDisplay)
+
+htfFillColor = htfBullishRegime ? color.new(bullColor, 87) : htfBearishStructural ? color.new(bearColor, 87) : color.new(sidewaysColor, 93)
+fill(pHTFFast, pHTFMid, showHTFMAs ? htfFillColor : na)
+fill(pHTFMid, pHTFSlow, showHTFMAs ? htfFillColor : na)
+
+// ========================================
+// PIVOT BIAS - GRAFICO (TIMING)
+// ========================================
+
+pivotSessionDisplay = pivotModuleActive and (showPivotOutsideSession or pivotInSession) and validDailyPivot
+pivotDisplayLevel = showPivotLevel and pivotSessionDisplay
+plot(pivotDisplayLevel ? dailyPivot : na, 'Pivot diario previo - timing', color = color.orange, linewidth = 2, style = plot.style_stepline, display = auxDisplay)
+
+pivotBiasBg = showPivotBiasBackground and pivotInSession and validDailyPivot ? (close > dailyPivot ? color.new(color.green, 92) : close < dailyPivot ? color.new(color.red, 92) : na) : na
+bgcolor(pivotBiasBg, title = 'Sesgo vs Pivot diario')
+
+plot(showPivotPrevOHLC and pivotSessionDisplay ? prevDayHigh : na, 'Pivot Prev High', color = color.new(color.red, 74), style = plot.style_stepline, display = auxDisplay)
+plot(showPivotPrevOHLC and pivotSessionDisplay ? prevDayLow : na, 'Pivot Prev Low', color = color.new(color.green, 74), style = plot.style_stepline, display = auxDisplay)
+plot(showPivotPrevOHLC and pivotSessionDisplay ? prevDayClose : na, 'Pivot Prev Close', color = color.new(color.gray, 68), style = plot.style_stepline, display = auxDisplay)
+
+plotshape(showPivotTransitionLabels and pivotReclaimed, title = 'Pivot recuperado', style = shape.triangleup, location = location.belowbar, color = color.new(color.green, 0), size = size.tiny)
+plotshape(showPivotTransitionLabels and pivotLost, title = 'Pivot perdido', style = shape.triangledown, location = location.abovebar, color = color.new(color.red, 0), size = size.tiny)
+
+
+
+
+// ========================================
+// PANEL UNIFICADO
+// ========================================
+
+textSize = getTextSize(dashboardSize)
+var table dashboardTable = table.new(getTablePosition(dashboardPosition), 2, 20,
+     bgcolor = tableBgColor, border_width = tableBorderWidth, border_color = tableBorderColor,
+     frame_color = tableFrameColor, frame_width = tableFrameWidth)
+
+if barstate.islast and showDashboard
+    table.clear(dashboardTable, 0, 0, 1, 19)
+
+    entryTrendText = entryBullishStack ? 'ALC' : entryBearishStack ? 'BAJ' : 'NEU'
+    entryTrendColor = entryBullishStack ? color.green : entryBearishStack ? color.red : color.gray
+    htfTrendText = htfStrong ? 'FUERTE' : htfPullback ? 'PULLBACK' : htfCorrection ? 'CORREC' : htfBearishStructural ? 'BAJ ESTR' : htfDeterioration ? 'DETER' : htfBullishRegime ? 'ALC' : 'NEU'
+    htfTrendColor = htfStrong ? color.green : htfPullback ? color.green : htfCorrection ? color.orange : htfBearishStructural ? color.red : htfDeterioration ? color.red : htfBullishRegime ? color.green : color.gray
+    contextText = longContext ? 'LARGOS' : htfCorrection ? 'ESPERAR' : (shortContext or htfDeterioration) ? 'EVITAR' : 'SIN ALIN'
+    contextColor = longContext ? color.green : htfCorrection ? color.orange : (shortContext or htfDeterioration) ? color.red : color.orange
+    setupText = longSetup ? 'PREP' : longContext ? 'WAIT' : 'NO'
+    setupColor = longSetup ? color.green : longContext ? color.orange : color.gray
+    volumeText = not requireVolumeConfirmation ? 'OFF' : na(relVolume) ? 'N/D' : str.tostring(relVolume, '#.##') + 'x ' + (volumeConfirmed ? 'OK' : 'BAJO')
+    volumeColor = not requireVolumeConfirmation ? color.gray : volumeConfirmed ? color.green : color.orange
+    confirmationText = latestDirection == 'UP' ? 'ALC CONF' : latestDirection == 'DOWN' ? 'BAJ DIAG' : 'PEND'
+    confirmationColor = latestDirection == 'UP' ? color.green : latestDirection == 'DOWN' ? color.red : color.orange
+    htfDataText = not htfIsHigher ? 'INVALIDO' : useConfirmedHTF ? 'CONF' : 'LIVE'
+    htfDataColor = not htfIsHigher ? color.red : useConfirmedHTF ? color.green : color.orange
+    pivotStateText = not showPivotInDashboard ? 'OCULTO' : not enablePivotBias ? 'OFF' : not timeframe.isintraday ? '>=1D' : pivotBias == 'ALCISTA' ? 'ALC' : pivotBias == 'BAJISTA' ? 'BAJ' : validDailyPivot ? 'NEU' : 'N/D'
+    pivotStateColor = pivotStateText == 'ALC' ? color.green : pivotStateText == 'BAJ' ? color.red : color.gray
+    pivotValueText = showPivotInDashboard and validDailyPivot ? str.tostring(dailyPivot, format.mintick) : '-'
+    pivotDistText = showPivotInDashboard and not na(pivotDistPct) ? str.tostring(pivotDistPct, '#.##') + '%' : '-'
+    pivotPositionText = showPivotInDashboard and validDailyPivot ? (pivotPosition == 'SOBRE PIVOT' ? 'SOBRE' : pivotPosition == 'BAJO PIVOT' ? 'BAJO' : 'EN') : '-'
+    pivotEventText = showPivotInDashboard and pivotModuleActive ? (pivotReclaimed ? 'RECUP' : pivotLost ? 'PIERDE' : '-') : '-'
+    pivotEventColor = pivotReclaimed ? color.green : pivotLost ? color.red : color.gray
+    pivotOHLCText = showPivotInDashboard and validDailyPivot ? str.tostring(prevDayHigh, format.mintick) + '/' + str.tostring(prevDayLow, format.mintick) + '/' + str.tostring(prevDayClose, format.mintick) : '-'
+
+    // Dos columnas, un dato por fila. Ancho automatico: TradingView ajusta cada columna al contenido real.
+    // No fijar width evita ocupar un porcentaje innecesario del grafico y evita recortes.
+    table.cell(dashboardTable, 0, 0, 'SWING MTF', bgcolor = tableHeaderBgColor, text_color = tableHeaderTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 0, getCurrentTimeframe() + '>' + formatTimeframe(selectedHTF), bgcolor = tableHeaderBgColor, text_color = color.orange, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 1, 'TF', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 1, getCurrentTimeframe(), text_color = color.orange, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 2, 'HTF', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 2, formatTimeframe(selectedHTF), text_color = color.aqua, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 3, 'HTF data', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 3, htfDataText, text_color = htfDataColor, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 4, 'Tr op', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 4, entryTrendText, text_color = entryTrendColor, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 5, 'Tr HTF', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 5, htfTrendText, text_color = htfTrendColor, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 6, 'Ctx', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 6, contextText, text_color = contextColor, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 7, 'Setup', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 7, setupText, text_color = setupColor, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 8, 'RVOL', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 8, volumeText, text_color = volumeColor, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 9, 'Conf', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 9, confirmationText, text_color = confirmationColor, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 10, 'Entry', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 10, na(latestEntryPrice) ? '-' : str.tostring(latestEntryPrice, format.mintick), text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 11, 'Break', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 11, na(latestBreakoutLevel) ? '-' : str.tostring(latestBreakoutLevel, format.mintick), text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 12, 'Inv', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 12, na(latestInvalidationRef) ? '-' : str.tostring(latestInvalidationRef, format.mintick), text_color = color.red, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 13, 'Prot', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 13, na(latestProtectionRef) ? '-' : str.tostring(latestProtectionRef, format.mintick), text_color = color.red, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 14, 'P bias', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 14, pivotStateText, text_color = pivotStateColor, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 15, 'Pivot', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 15, pivotValueText, text_color = color.orange, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 16, 'P %', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 16, pivotDistText, text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 17, 'P pos', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 17, pivotPositionText, text_color = pivotStateColor, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 18, 'P evt', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 18, pivotEventText, text_color = pivotEventColor, text_size = textSize, text_font_family = font.family_monospace)
+
+    table.cell(dashboardTable, 0, 19, 'Prev HLC', text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace, text_halign = text.align_left)
+    table.cell(dashboardTable, 1, 19, pivotOHLCText, text_color = tableTextColor, text_size = textSize, text_font_family = font.family_monospace)

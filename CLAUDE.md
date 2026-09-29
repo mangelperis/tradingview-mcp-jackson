@@ -53,7 +53,11 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 - `chart_scroll_to_date` → jump to a date (ISO format: "2025-01-15")
 - `chart_set_visible_range` → zoom to exact date range (unix timestamps)
 
-### "Work on Pine Script"
+### "Create a new Pine script"
+Follow `skills/investment-pine-maintainer/SKILL.md` to generate the source. Its contract is `references/project-rules.md`. That skill stops at the source.
+
+### "Put Pine on the chart"
+Follow `skills/pine-develop/SKILL.md` to push finished source into TradingView, compile it, and check the chart. Tools in that loop:
 1. `pine_set_source` → inject code into editor
 2. `pine_smart_compile` → compile with auto-detection + error check
 3. `pine_get_errors` → read compilation errors
