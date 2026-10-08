@@ -1,0 +1,106 @@
+{
+  "version": "1.3.0",
+  "sources": [
+    {
+      "name": "buffet_value_invest.md",
+      "path": "references/buffet_value_invest.md",
+      "role": "canonical",
+      "status": "PRESENT",
+      "original_sha256": "9e04e6869840e2880ed35644a8f3eaca949890f90f8d7dc85537b5ce0df23ddb",
+      "bundled_sha256": "9f2a475685a1ce6c285736aae98000259132b8f88f2f6d469d17f766e7ee069d",
+      "adaptation": "navigation_preamble_and_standalone_frontmatter_removed"
+    },
+    {
+      "name": "configuracion_proyecto_actualizada.md",
+      "path": "references/configuracion_proyecto_actualizada.md",
+      "role": "integration_check",
+      "status": "PRESENT",
+      "original_sha256": "303c22df7e97ea5985059ec26ff233250a2d9276b4f3e8f491641e283b320c4d",
+      "bundled_sha256": "73bc2d348380f6b19eaefd5b0bc476ed92959214d46739ca2f1d26f5583e005f",
+      "adaptation": "navigation_preamble_and_user_authorized_mtf_entry_integration_amendment_2026-09-29"
+    },
+    {
+      "name": "estrategia_inversion.md",
+      "path": "references/estrategia_inversion.md",
+      "role": "canonical",
+      "status": "PRESENT",
+      "original_sha256": "3e8c000e7e6570d1b367cfce3f1a3ce8c90e8fc0eeead65b28aa1df0fb353c57",
+      "bundled_sha256": "7dbde9586bfe17af1b5af6952e8af6c70f7740109303230510bda0135f5369ae",
+      "adaptation": "navigation_preamble_and_user_authorized_mtf_entry_amendment_2026-09-29_and_xtb_long_options_v1_2026-09-30"
+    },
+    {
+      "name": "regla_tunel.md",
+      "path": "references/regla_tunel.md",
+      "role": "canonical",
+      "status": "PRESENT",
+      "original_sha256": "978f59b7647490ca9b979aa01e1a4f397965f575604a3ff25d46a8557181faa3",
+      "bundled_sha256": "de680c6c777fa3b130e34a52f2f8a668ae4b4239118f0adc9aaacb376c843db3",
+      "adaptation": "navigation_preamble_and_user_authorized_mtf_entry_amendment_2026-09-29"
+    },
+    {
+      "name": "reglas_riesgo_tecnico.md",
+      "path": "references/reglas_riesgo_tecnico.md",
+      "role": "canonical",
+      "status": "PRESENT",
+      "original_sha256": "e44af693ab1d381b2a938babc534c5d6eea7cf40176fd9d978219020557b9ef1",
+      "bundled_sha256": "c894748dd857e2afca1fe28ebc752686b3b3d1b1f7927334fb1657f3597cdc92",
+      "adaptation": "navigation_preamble_and_user_authorized_mtf_entry_amendment_2026-09-29_and_xtb_long_options_v1_2026-09-30"
+    },
+    {
+      "name": "tendencia_mercado.md",
+      "path": "references/tendencia_mercado.md",
+      "role": "canonical",
+      "status": "PRESENT",
+      "original_sha256": "54ac87fa8b08a83021e534007333f2668317ab84e8fb07dc93852fc99a0b2bcf",
+      "bundled_sha256": "ccbec8fbaa2d0a1a7268d1e30e0ca4946ad2fa18ef138a23dbeae747f9284e31",
+      "adaptation": "navigation_preamble"
+    }
+  ],
+  "missing_dependencies": [
+    {
+      "name": "sentimiento_posicionamiento.md",
+      "status": "DATO PENDIENTE",
+      "role": "optional_permanent_module"
+    },
+    {
+      "name": "automatizacion_sentimiento_semanal.md",
+      "status": "DATO PENDIENTE",
+      "role": "optional_report_workflow"
+    },
+    {
+      "name": "estrategia_asignacion_macro.md",
+      "status": "DATO PENDIENTE",
+      "role": "required_for_broad_etf_allocation_execution"
+    }
+  ],
+  "implementation_references": [
+    {
+      "name": "MTF Swing 30/50/200 + Pivot Bias",
+      "path": "references/tradingview_mtf_swing_pivot.pine",
+      "role": "tradingview_implementation_reference",
+      "status": "PRESENT",
+      "source_sha256": "036effa5bb8771e32935b7857ccc62d479ff8f9aad7ba6263886ff95573c94cb",
+      "bundled_sha256": "036effa5bb8771e32935b7857ccc62d479ff8f9aad7ba6263886ff95573c94cb",
+      "as_of": "2026-09-29",
+      "notes": "User-provided Pine v6. 30/50/200 is an implementation choice, not a standalone canonical replacement."
+    },
+    {
+      "name": "XTB long single-leg options V1",
+      "path": "references/options_xtb_long.md",
+      "role": "broker_options_profile_reference",
+      "status": "PRESENT",
+      "bundled_sha256": "f73e9c459f1b1429d1a0e14d0217edd83d90fb515fbb4bee4efdde6c6e90b534",
+      "as_of": "2026-09-30",
+      "notes": "User-authorized conservative adapter based on supplied XTB UI evidence. No hardcoded global volume limit or contract multiplier; no sell-to-open or multi-leg."
+    },
+    {
+      "name": "Momentum Leadership Prefilter v1",
+      "path": "references/momentum_prefilter.md",
+      "role": "momentum_discovery_reference",
+      "status": "PRESENT",
+      "bundled_sha256": "9a5a5acddf8f4c65e4a624eac93b7f0141fb7166d2021337f38767020f53c780",
+      "as_of": "2026-10-08",
+      "notes": "External social-media heuristic, user-approved as derived discovery-only implementation. No fundamental score, execution gate, risk scalar or source-authority elevation."
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+interface:
+  display_name: Investment Swing Framework
+  short_description: Fundamentales, swing, riesgo y opciones long XTB con gates verificables.
+  default_prompt: Usa investment-swing-framework para analizar el instrumento solicitado
+    con datos actuales, referencias canonicas, calculos y validacion final; si se
+    piden opciones XTB aplica solo el modulo long single-leg V1.
+  icon_small: assets/icon.svg
+  icon_large: assets/icon.svg
+policy:
+  allow_implicit_invocation: true
+  products:
+  - chatgpt
+  - codex
+  - api
+  - atlas

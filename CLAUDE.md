@@ -35,6 +35,9 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 - `data_get_ohlcv` without summary → all bars (use `count` to limit, default 100)
 - `quote_get` → single latest price snapshot
 
+### "Analyze a stock or ETF" (fundamental + swing)
+Follow `skills/investment-swing-framework/SKILL.md`. It owns score, context caps, MTF entry, risk, DCA, and position management. Momentum discovery and XTB long options run only when that request asks for them. Chart reads still use the workflow below.
+
 ### "Analyze my chart" (full report workflow)
 1. `quote_get` → current price
 2. `data_get_study_values` → all indicator readings

@@ -1,0 +1,287 @@
+{
+  "schema_version": "1.0",
+  "synthetic": true,
+  "analysis_at": "2000-01-03T22:00:00+01:00",
+  "instrument": {
+    "ticker": "SYNTH",
+    "exchange": "SYNTHETIC",
+    "country": "US",
+    "currency": "USD",
+    "kind": "STOCK",
+    "price": 100,
+    "quote_at": "2000-01-03T21:00:00+00:00",
+    "identity_verified": true
+  },
+  "data_quality": {
+    "price_current": true,
+    "fundamentals_current": true,
+    "news_checked": true
+  },
+  "fundamentals": {
+    "categories": {
+      "business_quality": 18,
+      "profitability": 13,
+      "balance_sheet": 13,
+      "free_cash_flow": 13,
+      "growth": 8,
+      "valuation": 16,
+      "governance": 4
+    },
+    "data_quality": {
+      "recent_statements": true,
+      "debt_verified": true,
+      "fcf_verified": true,
+      "pre_profit": false,
+      "narrative_only": false
+    },
+    "buffett": {
+      "badge": "GOLD",
+      "structuralBreak": false,
+      "shortThesisRisk": "LOW",
+      "qualityPass": true,
+      "compounderPass": true,
+      "crowdingRisk": "LOW"
+    }
+  },
+  "valuation": {
+    "status": "SYNTHETIC_TEST_ONLY"
+  },
+  "buffett": {
+    "badge": "GOLD",
+    "structuralBreak": false,
+    "shortThesisRisk": "LOW",
+    "qualityPass": true,
+    "compounderPass": true,
+    "crowdingRisk": "LOW"
+  },
+  "structural_trend": {
+    "sma200_daily": 100
+  },
+  "context_stack": {
+    "as_of": "2000-01-03T22:00:00+01:00",
+    "layers": {
+      "GLOBAL": {
+        "applicable": true,
+        "market_regime": "RISK_ON",
+        "market_risk_scalar": 1,
+        "sentiment_regime": "NEUTRAL",
+        "sentiment_cap": 1,
+        "source_ids": [
+          "s1"
+        ],
+        "sentiment_source_ids": [
+          "s1"
+        ]
+      },
+      "REGION": {
+        "applicable": true,
+        "market_regime": "RISK_ON",
+        "market_risk_scalar": 1,
+        "sentiment_regime": "NEUTRAL",
+        "sentiment_cap": 1,
+        "source_ids": [
+          "s1"
+        ],
+        "sentiment_source_ids": [
+          "s1"
+        ]
+      },
+      "STYLE": {
+        "applicable": true,
+        "market_regime": "RISK_ON",
+        "market_risk_scalar": 1,
+        "sentiment_regime": "NEUTRAL",
+        "sentiment_cap": 1,
+        "source_ids": [
+          "s1"
+        ],
+        "sentiment_source_ids": [
+          "s1"
+        ]
+      },
+      "SECTOR": {
+        "applicable": true,
+        "market_regime": "RISK_ON",
+        "market_risk_scalar": 1,
+        "sentiment_regime": "NEUTRAL",
+        "sentiment_cap": 1,
+        "source_ids": [
+          "s1"
+        ],
+        "sentiment_source_ids": [
+          "s1"
+        ]
+      },
+      "INDUSTRY": {
+        "applicable": true,
+        "market_regime": "RISK_ON",
+        "market_risk_scalar": 1,
+        "sentiment_regime": "NEUTRAL",
+        "sentiment_cap": 1,
+        "source_ids": [
+          "s1"
+        ],
+        "sentiment_source_ids": [
+          "s1"
+        ]
+      }
+    },
+    "divergence": {
+      "state": "ALIGNED_POSITIVE",
+      "cap": 1,
+      "source_ids": [
+        "s1"
+      ]
+    },
+    "weekly_report": {
+      "status": "COMPLETE",
+      "published_at": "2000-01-03T08:00:00+01:00",
+      "valid_until": "2000-01-10T08:00:00+01:00",
+      "data_coverage": 0.8,
+      "missing_critical_layers": [],
+      "material_shock": false
+    }
+  },
+  "market_regime": {
+    "status": "DERIVED_BY_LAYER"
+  },
+  "sentiment": {
+    "status": "EXTERNAL_INPUT"
+  },
+  "technical": {
+    "entry_plan": true,
+    "regime_compatible": true,
+    "blocking_divergence": false,
+    "obstacles": [],
+    "aggressive_entry": false,
+    "liquid": true,
+    "setup_grade": "A_PLUS",
+    "stop_thesis": 92,
+    "stop_thesis_basis": "DAILY_CLOSE",
+    "source_ids": [
+      "s1"
+    ],
+    "event_risk_reviewed": true,
+    "correlation_reviewed": true,
+    "mtf": {
+      "setup_type": "REACCELERATION",
+      "bar_closed": true,
+      "htf_confirmed": true,
+      "ma_types": {
+        "operating": "EMA",
+        "structural_htf": "SMA"
+      },
+      "operating": {
+        "close": 105,
+        "fast5": 104,
+        "mid13": 102,
+        "slow34": 100
+      },
+      "htf": {
+        "close": 110,
+        "fast30": 108,
+        "mid50": 104,
+        "slow200": 95
+      },
+      "recent_bull_cross": true,
+      "breakout_confirmed": true,
+      "volume_confirmed": true,
+      "support_state": "CONFIRMED",
+      "seller_exhaustion": "CONFIRMED",
+      "pivot_bias": {
+        "bias": "ALCISTA",
+        "event": "RECUPERA_PIVOT",
+        "source": "PREVIOUS_CONFIRMED_DAILY_HLC"
+      }
+    }
+  },
+  "tunnel": {
+    "ht": {
+      "close": 100,
+      "Z_low": 90,
+      "Z_high": 95,
+      "Z_color": "GREEN",
+      "G": 89,
+      "G_color": "GREEN",
+      "slope_G": 1,
+      "B_blue_low": 80,
+      "B_blue_high": 140,
+      "B_pink_low": 75,
+      "B_pink_high": 150,
+      "closed": true
+    },
+    "setup": {
+      "close": 100,
+      "Z_low": 90,
+      "Z_high": 95,
+      "Z_color": "GREEN",
+      "G": 89,
+      "G_color": "GREEN",
+      "slope_G": 1,
+      "B_blue_low": 80,
+      "B_blue_high": 140,
+      "B_pink_low": 75,
+      "B_pink_high": 150,
+      "closed": true,
+      "MACD_hist": 2,
+      "vol_rel": 1.5
+    },
+    "previous": {
+      "close": 94,
+      "Z_low": 90,
+      "Z_high": 95,
+      "Z_color": "GREEN",
+      "G": 89,
+      "G_color": "GREEN",
+      "slope_G": 1,
+      "B_blue_low": 80,
+      "B_blue_high": 140,
+      "B_pink_low": 75,
+      "B_pink_high": 150,
+      "closed": true,
+      "MACD_hist": 1
+    },
+    "EPS": 0,
+    "SLOPE_MIN": 0,
+    "VOL_MIN_FACTOR": 1.3,
+    "shorts_requested": false
+  },
+  "risk": {
+    "capital_total": 100000,
+    "capital_currency": "USD",
+    "currency": "USD",
+    "risk_fraction": 0.01,
+    "effective_risk_scalar": 1,
+    "entry": 100,
+    "support": 92,
+    "atr14": 2,
+    "stop_protector": 90,
+    "target": 125,
+    "roundtrip_cost_per_share": 0.5,
+    "existing_shares": 0,
+    "current_price": 100,
+    "exceptional_setup": false,
+    "liquid": true,
+    "fully_confirmed": true,
+    "fundamental_score": 85
+  },
+  "dca": null,
+  "position": {
+    "status": "NONE",
+    "shares": 0,
+    "currency": "USD"
+  },
+  "review": {
+    "mode": "INITIAL",
+    "material_changes": []
+  },
+  "sources": [
+    {
+      "id": "s1",
+      "kind": "DATO_REPORTADO",
+      "reference": "urn:synthetic:fixture",
+      "retrieved_at": "2000-01-03T22:00:00+01:00",
+      "as_of": "2000-01-03T21:00:00+00:00"
+    }
+  ]
+}
